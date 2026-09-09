@@ -1,0 +1,151 @@
+services:
+  # ============ MySQL 业务数据库 ============
+  mysql:
+    image: mysql:8.0
+    container_name: monitor-mysql
+    mem_limit: 1g
+    cpus: "1.5"
+    restart: always
+    environment:
+      # ⚠️ 时区锁定为北京时间，禁止修改！
+      TZ: Asia/Shanghai
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?请在 .env 中设置}
+      MYSQL_DATABASE: monitor_platform
+      MYSQL_USER: monitor
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:?请在 .env 中设置}
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ./database/init.sql:/docker-entrypoint-initdb.d/01-init.sql
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_unicode_ci
+      - --default-time-zone=+08:00
+      - --binlog_expire_logs_seconds=259200
+    networks:
+      - monitor-net
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ============ InfluxDB 时序数据库 ============
+  influxdb:
+    image: influxdb:2.7
+    container_name: monitor-influxdb
+    mem_limit: 1g
+    cpus: "1.5"
+    restart: always
+    environment:
+      # ⚠️ 时区锁定为北京时间，禁止修改！
+      TZ: Asia/Shanghai
+      DOCKER_INFLUXDB_INIT_MODE: setup
+      DOCKER_INFLUXDB_INIT_USERNAME: monitor
+      DOCKER_INFLUXDB_INIT_PASSWORD: ${INFLUXDB_PASSWORD:?请在 .env 中设置}
+      DOCKER_INFLUXDB_INIT_ORG: monitor-org
+      DOCKER_INFLUXDB_INIT_BUCKET: machine_metrics
+      DOCKER_INFLUXDB_INIT_ADMIN_TOKEN: ${INFLUXDB_TOKEN:?请在 .env 中设置}
+    ports:
+      - "8086:8086"
+    volumes:
+      - influxdb_data:/var/lib/influxdb2
+      - influxdb_config:/etc/influxdb2
+    networks:
+      - monitor-net
+    healthcheck:
+      test: ["CMD", "influx", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ============ FastAPI 后端服务 ============
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: monitor-backend
+    mem_limit: 512m
+    cpus: "1.0"
+    memswap_limit: 512m
+    env_file:
+      - .env
+    restart: always
+    network_mode: host
+    environment:
+      # ⚠️ 时区锁定为北京时间，禁止修改！
+      TZ: Asia/Shanghai
+      MYSQL_HOST: 127.0.0.1
+      MYSQL_PORT: 3306
+      MYSQL_USER: monitor
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:?请在 .env 中设置}
+      MYSQL_DATABASE: monitor_platform
+      INFLUXDB_URL: http://127.0.0.1:8086
+      INFLUXDB_TOKEN: ${INFLUXDB_TOKEN:?请在 .env 中设置}
+      INFLUXDB_ORG: monitor-org
+      INFLUXDB_BUCKET: machine_metrics
+      AI_API_KEY: ${AI_API_KEY}
+      AI_MODEL: ${AI_MODEL:-deepseek-chat}
+      AI_BASE_URL: ${AI_BASE_URL:-https://api.deepseek.com/v1}
+      ADMIN_USER: ${ADMIN_USER:-admin}
+      ADMIN_PASS: ${ADMIN_PASS:?请在 .env 中设置}
+      SECRET_KEY: ${SECRET_KEY:?请在 .env 中设置}
+      JWT_SECRET: ${JWT_SECRET:?请在 .env 中设置}
+    volumes:
+      - ./backend:/app
+    depends_on:
+      mysql:
+        condition: service_healthy
+      influxdb:
+        condition: service_healthy
+
+  # ============ Vue3 前端服务 ============
+  frontend:
+    image: monitor-frontend:optimized
+    container_name: monitor-frontend
+    mem_limit: 128m
+    cpus: "0.5"
+    restart: always
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/https.conf:/etc/nginx/conf.d/https.conf:ro
+      - ./nginx/ssl:/etc/nginx/ssl:ro
+    depends_on:
+      - backend
+    networks:
+      - monitor-net
+
+  # ============ 采集 Agent ============
+  collector:
+    build:
+      context: ./collector
+      dockerfile: Dockerfile
+    container_name: monitor-collector
+    mem_limit: 128m
+    cpus: "0.5"
+    restart: always
+    network_mode: host
+    pid: host
+    privileged: true
+    environment:
+      BACKEND_URL: http://localhost:8000
+      COLLECT_INTERVAL: 10
+    volumes:
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+    depends_on:
+      - backend
+
+volumes:
+  mysql_data:
+  influxdb_data:
+  influxdb_config:
+
+networks:
+  monitor-net:
+    driver: bridge
+
+

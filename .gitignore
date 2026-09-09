@@ -1,0 +1,17 @@
+# 密钥与本地配置
+.env
+*.pem
+*.key
+
+# 运行时/垃圾
+__pycache__/
+*.pyc
+*.bak*
+*.orig
+data/
+node_modules/
+
+# 快照与临时
+_snap.tar.gz
+_html.tar.gz
+*.log

@@ -1,0 +1,200 @@
+/* ===========================================================
+   智能监控平台 · 前端定制样式（mc-custom.css）
+   ------------------------------------------------------------
+   本文件由 tools/_custom_extract.py 从生产 index.html 抽取，
+   是 2026-07 ~ 2026-09 所有前端热修的**唯一样式来源**。
+   ⛔ 不要再直接改 index.html —— 一切改动进这里。
+   由 tools/apply_custom.py 在「前端全量重建后」一键缝回 dist。
+   =========================================================== */
+/* ====ASSET-BODY-BEGIN==== */
+/* ══ 主定制样式 ══ */
+    .nav-item.res-sub { margin-top:0; }
+    .nav-item.res-sub .nav-icon { width:16px; height:16px; opacity:.85; display:inline-flex; align-items:center; justify-content:center; }
+    .nav-item.res-sub .nav-icon svg { width:100%; height:100%; }
+    .res-sub-dot { display:none; }
+    #res-main-root { height:100%; overflow:auto; }
+    /* 展开/收起箭头（SVG 16px，颜色继承 nav-item） */
+    .res-sub .rc-arrow { margin-left:auto; opacity:.65; transition:transform .2s,opacity .2s; flex-shrink:0; display:inline-flex; align-items:center; }
+    .res-sub:hover .rc-arrow { opacity:1; }
+    .res-sub.open .rc-arrow { transform:rotate(180deg); }
+    .res-sub .rc-arrow svg { width:16px; height:16px; }
+    /* 资源管理二级子项：颜色/hover/active 全部继承 nav-item（随主题切换），仅加缩进 + 默认隐藏 */
+    .nav-item.rc-sub { display:none; align-items:center; padding-left:52px !important; }
+    .nav-item.rc-sub .nav-label { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    .nav-item.rc-sub .rc-sub-cnt { flex-shrink:0; margin-left:8px; font-size:11px; line-height:1; padding:3px 8px; border-radius:9px; background:rgba(128,128,128,.18); color:inherit; min-width:20px; text-align:center; font-weight:600; }
+    /* 全站：去掉顶栏统计、顶栏右对齐 */
+    .topbar-stats { display:none !important; }
+    .topbar { justify-content:flex-end !important; }
+    /* 顶栏：移除搜索 / 紧凑 / 大屏按钮，保留深色切换与时间（提高特异性以压过 SPA 注入样式） */
+    .topbar .topbar-right .cmdk-trigger { display:none !important; }
+    .topbar .topbar-right .mode-toggle[title="紧凑密度"] { display:none !important; }
+    .topbar .topbar-right .mode-toggle[title="大屏模式"] { display:none !important; }
+    /* 左下角账号区已移除（需求③：删掉账号展示/账号管理/关闭按钮） */
+    .sidebar-footer { display:none !important; }
+    /* 需求②：展开子级后导航内容溢出 → 撑高文档使整页可滚 → 侧栏被顶出视口、其 border-right(分割线) 不到底。
+       修复：导航在侧栏内部滚动（min-height:0 让 flex 项可收缩 + overflow-y:auto），侧栏恒为满高，分割线始终通到底。 */
+    .sidebar { overflow:hidden !important; }
+    .sidebar-nav { min-height:0 !important; overflow-y:auto !important; }
+    /* 监控中心父级 + 设备管理子级（需求②） */
+    .nav-item.mc-parent { margin-top:0; }
+    .nav-item.mc-parent .nav-icon { width:16px; height:16px; opacity:.85; display:inline-flex; align-items:center; justify-content:center; }
+    .nav-item.mc-parent .nav-icon svg { width:100%; height:100%; }
+    .nav-item.mc-parent .rc-arrow { margin-left:auto; opacity:.65; transition:transform .2s,opacity .2s; flex-shrink:0; display:inline-flex; align-items:center; }
+    .nav-item.mc-parent:hover .rc-arrow { opacity:1; }
+    .nav-item.mc-parent.open .rc-arrow { transform:rotate(180deg); }
+    .nav-item.mc-parent .rc-arrow svg { width:16px; height:16px; }
+    .nav-item.mc-sub { display:none; align-items:center; padding-left:52px !important; }
+    .nav-item.mc-sub .nav-label { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    /* 需求①②：被移入子级的原始顶级项在顶级隐藏（用属性选择器而非 JS 加类——Vue 重渲染会重写 class，类会被抹掉） */
+    .sidebar-nav .nav-item[data-route="/"],          .sidebar-nav .nav-item[to="/"],          .sidebar-nav .nav-item[href="/"],
+    .sidebar-nav .nav-item[data-route="/machines"], .sidebar-nav .nav-item[to="/machines"], .sidebar-nav .nav-item[href="/machines"],
+    .sidebar-nav .nav-item[data-route="/monitor"],  .sidebar-nav .nav-item[to="/monitor"],  .sidebar-nav .nav-item[href="/monitor"],
+    .sidebar-nav .nav-item[data-route="/alerts"],   .sidebar-nav .nav-item[to="/alerts"],   .sidebar-nav .nav-item[href="/alerts"] { display:none !important; }
+    /* 右上角账号组件 */
+    .rc-acct { position:relative; display:inline-flex; align-items:center; margin-right:10px; }
+    .rc-acct-btn { display:inline-flex; align-items:center; gap:6px; height:32px; padding:0 11px; border-radius:8px; border:1px solid var(--border-default,#e3e8ef); background:var(--surface-overlay,#fff); color:var(--text-primary,#1f2937); cursor:pointer; font-size:13px; }
+    .rc-acct-btn:hover { border-color:var(--accent,#1B3F7A); color:var(--accent,#1B3F7A); }
+    .rc-acct-btn .av { width:22px; height:22px; border-radius:50%; background:var(--accent,#1B3F7A); color:#fff; display:inline-flex; align-items:center; justify-content:center; font-size:12px; font-weight:600; }
+    .rc-acct-menu { position:absolute; top:38px; right:0; min-width:168px; background:#fff; border:1px solid var(--border-subtle,#e5e7eb); border-radius:10px; box-shadow:0 12px 36px rgba(0,0,0,.16); padding:6px; z-index:6000; }
+    .rc-acct-menu button { display:flex; width:100%; align-items:center; gap:8px; padding:9px 10px; border:0; background:transparent; color:var(--text-primary,#1f2937); cursor:pointer; border-radius:7px; font-size:13px; text-align:left; }
+    .rc-acct-menu button:hover { background:var(--surface-hover,#f3f6fb); }
+    .rc-acct-menu .sep { height:1px; background:var(--border-subtle,#eef1f5); margin:5px 2px; }
+    /* 无权限菜单项隐藏（管理员不隐藏） */
+    .nav-item.rc-no-perm { display:none !important; }
+    /* 资源中心模式：顶栏浅灰 */
+    body.has-res-root .topbar { background:var(--surface-root,#f5f7fa) !important; border-bottom:1px solid var(--border-subtle); color:var(--text-primary); }
+    body.has-res-root .topbar .topbar-right svg, body.has-res-root .topbar .topbar-right button { color:var(--text-primary); }
+  
+/* ===MC-BATCH:_mc_css_dashboard.css=== */
+/* ===== MC 视觉统一 · 设计令牌 + 监控总览 dashboard ===== */
+:root,[data-theme="light"]{
+  --mc-bg:#ffffff;--mc-bg-2:#f8fafc;
+  --mc-border:rgba(16,24,40,.08);--mc-border-strong:rgba(16,24,40,.12);
+  --mc-text:#0f172a;--mc-text-2:#475569;--mc-text-3:#94a3b8;
+  --mc-shadow:0 1px 2px rgba(16,24,40,.05);--mc-shadow-hover:0 8px 24px rgba(16,24,40,.10);
+  --mc-bar-1:#1B3F7A;--mc-bar-2:#16a34a;--mc-bar-3:#d97706;--mc-bar-4:#dc2626;--mc-bar-5:#7c3aed;--mc-bar-6:#0891b2;
+}
+[data-theme="dark"]{
+  --mc-bg:#0f1623;--mc-bg-2:#141d2e;
+  --mc-border:rgba(255,255,255,.08);--mc-border-strong:rgba(255,255,255,.14);
+  --mc-text:#e5e7eb;--mc-text-2:#94a3b8;--mc-text-3:#64748b;
+  --mc-shadow:0 1px 2px rgba(0,0,0,.35);--mc-shadow-hover:0 10px 28px rgba(0,0,0,.55);
+  --mc-bar-1:#5b8def;--mc-bar-2:#34d399;--mc-bar-3:#fbbf24;--mc-bar-4:#f87171;--mc-bar-5:#a78bfa;--mc-bar-6:#22d3ee;
+}
+@keyframes mcStatFade{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+@media (prefers-reduced-motion:reduce){.main-area .mc-anim{animation:none!important;opacity:1!important}}
+
+/* 监控总览 dashboard .stat-card → 硬件台账风格 */
+.main-area .stat-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:16px;margin-bottom:18px}
+.main-area .stat-card{position:relative;overflow:hidden;background:var(--mc-bg);border:1px solid var(--mc-border);border-radius:14px;padding:20px;box-shadow:var(--mc-shadow);color:var(--mc-text);opacity:0;animation:mcStatFade .5s cubic-bezier(.16,1,.3,1) both;animation-delay:calc(var(--i,0)*.09s)}
+.main-area .stat-card::after{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--bar,var(--mc-bar-1))}
+.main-area .stat-card:hover{transform:translateY(-3px);box-shadow:var(--mc-shadow-hover);transition:transform .2s,box-shadow .2s}
+.main-area .stat-card .stat-top{display:flex;align-items:center;gap:10px;margin-bottom:6px}
+.main-area .stat-card .stat-icon{display:inline-flex;width:30px;height:30px;border-radius:9px;align-items:center;justify-content:center;background:color-mix(in srgb,var(--bar,var(--mc-bar-1)) 13%,transparent);color:var(--bar,var(--mc-bar-1))}
+.main-area .stat-card .stat-icon svg{width:17px;height:17px}
+.main-area .stat-card .stat-value{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:32px;font-weight:700;line-height:1.1;margin-top:8px;letter-spacing:-.02em;color:var(--mc-text)}
+.main-area .stat-card .stat-label{font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--mc-text-3);margin-top:2px}
+.main-area .stat-card .stat-sub{font-size:11px;color:var(--mc-text-2);margin-top:6px}
+.main-area .stat-grid>.stat-card:nth-child(1){--i:0;--bar:var(--mc-bar-1)}
+.main-area .stat-grid>.stat-card:nth-child(2){--i:1;--bar:var(--mc-bar-2)}
+.main-area .stat-grid>.stat-card:nth-child(3){--i:2;--bar:var(--mc-bar-3)}
+.main-area .stat-grid>.stat-card:nth-child(4){--i:3;--bar:var(--mc-bar-4)}
+.main-area .stat-grid>.stat-card:nth-child(5){--i:4;--bar:var(--mc-bar-5)}
+.main-area .stat-grid>.stat-card:nth-child(6){--i:5;--bar:var(--mc-bar-6)}
+
+/* ===MC-BATCH:_mc_css_detail.css=== */
+/* ===== MC 视觉统一 · 机器详情 monitor-detail gauge/chart ===== */
+.main-area .gauge-row,.main-area .chart-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:16px;margin-bottom:16px}
+.main-area .gauge-card,.main-area .chart-panel{position:relative;overflow:hidden;background:var(--mc-bg);border:1px solid var(--mc-border);border-radius:14px;padding:18px;box-shadow:var(--mc-shadow);color:var(--mc-text);opacity:0;animation:mcStatFade .5s cubic-bezier(.16,1,.3,1) both;animation-delay:calc(var(--i,0)*.09s)}
+.main-area .gauge-card::after,.main-area .chart-panel::after{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--bar,var(--mc-bar-1))}
+.main-area .gauge-card:hover,.main-area .chart-panel:hover{transform:translateY(-3px);box-shadow:var(--mc-shadow-hover);transition:transform .2s,box-shadow .2s}
+.main-area .gauge-title,.main-area .chart-title{font-size:12px;font-weight:600;letter-spacing:.04em;color:var(--mc-text-2);margin-bottom:10px}
+.main-area .gauge-body,.main-area .chart-body{min-height:120px}
+.main-area .chart-header{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:8px;flex-wrap:wrap}
+.main-area .chart-header button,.main-area .chart-header [class*="tab"],.main-area .chart-header [class*="range"]{font-size:12px;padding:3px 10px;border-radius:8px;border:1px solid var(--mc-border);background:var(--mc-bg-2);color:var(--mc-text-2);cursor:pointer;transition:all .15s}
+.main-area .chart-header button:hover,.main-area .chart-header [class*="tab"]:hover,.main-area .chart-header [class*="range"]:hover{color:var(--mc-text);border-color:var(--mc-border-strong)}
+.main-area .chart-header [class*="active"],.main-area .chart-header .is-active{background:var(--mc-bar-1);color:#fff;border-color:var(--mc-bar-1)}
+.main-area .gauge-row>.gauge-card:nth-child(1){--i:0;--bar:var(--mc-bar-1)}
+.main-area .gauge-row>.gauge-card:nth-child(2){--i:1;--bar:var(--mc-bar-2)}
+.main-area .gauge-row>.gauge-card:nth-child(3){--i:2;--bar:var(--mc-bar-3)}
+.main-area .gauge-row>.gauge-card:nth-child(4){--i:3;--bar:var(--mc-bar-4)}
+.main-area .chart-row>.chart-panel:nth-child(1){--i:0;--bar:var(--mc-bar-5)}
+.main-area .chart-row>.chart-panel:nth-child(2){--i:1;--bar:var(--mc-bar-6)}
+.main-area .chart-row>.chart-panel:nth-child(3){--i:2;--bar:var(--mc-bar-1)}
+.main-area .chart-row>.chart-panel:nth-child(4){--i:3;--bar:var(--mc-bar-2)}
+
+/* ===MC-BATCH:_mc_css_list.css=== */
+/* ===== MC 视觉统一 · 列表三页 表格/卡片/状态 ===== */
+.main-area table{width:100%;border-collapse:collapse}
+.main-area tbody tr{transition:background .15s}
+.main-area tbody tr:hover{background:var(--mc-bg-2)}
+.main-area th,.main-area td{padding:10px 14px;border-bottom:1px solid var(--mc-border);color:var(--mc-text);font-size:13px}
+.main-area th{color:var(--mc-text-2);font-weight:600;font-size:12px;text-transform:uppercase;letter-spacing:.03em}
+.main-area .machine-mini-card,.main-area .mini-metrics{background:var(--mc-bg);border:1px solid var(--mc-border);border-radius:12px;padding:14px;box-shadow:var(--mc-shadow);transition:transform .2s,box-shadow .2s;color:var(--mc-text)}
+.main-area .machine-mini-card:hover{transform:translateY(-3px);box-shadow:var(--mc-shadow-hover)}
+.main-area .status-pill,.main-area .status-badge{border-radius:999px;padding:2px 10px;font-size:12px;font-weight:600}
+.main-area .title-count{display:inline-flex;align-items:center;gap:6px;background:var(--mc-bg);border:1px solid var(--mc-border);border-left:3px solid var(--mc-bar-4);border-radius:10px;padding:6px 12px;font-weight:700;color:var(--mc-text)}
+.main-area .topbar-stats .stat-pill{border-radius:999px}
+/* ══ mc-mach-layout 排版 ══ */
+/* ===MC-MACH-LAYOUT 2026-09-07===
+   设备管理 /machines 下半部分（工具栏 + 表格）排版对齐 资源台账 / 硬件台账
+   仅限 .machines-page，零影响其它页面；颜色全走 --mc-* 令牌（明暗自适应）
+*/
+.main-area .machines-page .toolbar{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:14px}
+.main-area .machines-page .toolbar input,
+.main-area .machines-page .toolbar select{
+  background:var(--mc-bg);border:1px solid var(--mc-border-strong);border-radius:8px;
+  padding:8px 12px;font-size:13px;color:var(--mc-text);
+  transition:border-color .15s,box-shadow .15s}
+.main-area .machines-page .toolbar input::placeholder{color:var(--mc-text-3)}
+.main-area .machines-page .toolbar select{padding-right:30px;min-width:118px;cursor:pointer}
+.main-area .machines-page .toolbar input:focus,
+.main-area .machines-page .toolbar select:focus{
+  outline:none;border-color:var(--mc-bar-1);box-shadow:0 0 0 3px rgba(148,163,184,.18)}
+.main-area .machines-page .toolbar .search-input{min-width:220px;max-width:340px;flex:1 1 220px}
+
+/* 表格卡片化：与 .rc-table（资源/硬件台账）一致 */
+.main-area .machines-page .table-wrap{
+  background:var(--mc-bg);border:1px solid var(--mc-border-strong);border-radius:12px;
+  box-shadow:var(--mc-shadow);overflow-x:auto;margin-bottom:14px}
+.main-area .machines-page table{width:100%;border-collapse:collapse;font-size:13px}
+.main-area .machines-page thead th{
+  background:var(--mc-bg-2);text-align:left;padding:11px 16px;font-size:10px;font-weight:600;
+  letter-spacing:.06em;text-transform:uppercase;color:var(--mc-text-3);
+  border-bottom:1px solid var(--mc-border-strong);white-space:nowrap}
+.main-area .machines-page tbody td{
+  padding:12px 16px;border-bottom:1px solid var(--mc-border);vertical-align:middle;font-size:13px}
+.main-area .machines-page tbody tr{transition:background .15s}
+.main-area .machines-page tbody tr:hover td{background:var(--mc-bg-2)}
+.main-area .machines-page tbody tr:last-child td{border-bottom:none}
+
+/* 状态 pill / 行操作按钮：与台账的 chip、描边按钮一致 */
+.main-area .machines-page .status-pill,
+.main-area .machines-page .status-badge{padding:4px 12px;font-size:12px;border-radius:999px}
+.main-area .machines-page tbody td:last-child button,
+.main-area .machines-page tbody td:last-child a{
+  border:1px solid var(--mc-border-strong);border-radius:8px;padding:4px 9px;font-size:12px;
+  background:var(--mc-bg);color:var(--mc-text-2);transition:color .15s,border-color .15s,background .15s}
+.main-area .machines-page tbody td:last-child button:hover,
+.main-area .machines-page tbody td:last-child a:hover{
+  color:var(--mc-text);border-color:var(--mc-bar-1);background:var(--mc-bg-2)}
+
+/* ══ rm-collapse-btn 去折叠按钮 ══ */
+/* ===RM-COLLAPSE 2026-09-07=== 移除左上角折叠侧栏功能（需求：删掉折叠按钮） */
+/* 1) 隐藏顶部品牌区的折叠按钮 —— 这是页面上唯一能触发折叠的入口 */
+.sidebar-brand .collapse-btn{display:none!important}
+/* 2) 页脚折叠按钮（原已随页脚隐藏）一并禁用，双保险 */
+.sidebar-footer .collapse-btn{display:none!important}
+/* 3) 兜底：即便其它代码误触发 collapsed 类，也强制保持侧栏展开、导航文字可见，
+       .main-area 为 flex:1 自适应，宽度恒为 220px 不影响右侧内容布局（彻底删除折叠行为） */
+.sidebar.collapsed{width:220px!important;min-width:220px!important}
+/* 品牌标题（智能监控平台）：Vue 用 v-show 内联 display:none 隐藏，用 !important 压回显示 */
+.sidebar.collapsed .brand-text{display:block!important}
+.sidebar.collapsed .nav-label,
+.sidebar.collapsed .nav-text,
+.sidebar.collapsed .nav-sub,
+.sidebar.collapsed .nav-indicator,
+.sidebar.collapsed .nav-group-title{opacity:1!important;pointer-events:auto!important}
+/* ══ rm-topbar-time 去顶栏时间 ══ */
+/* ===RM-TOPBAR-TIME 2026-09-07=== 移除右上角时间展示（需求） */
+.topbar .topbar-right .topbar-time{display:none!important}

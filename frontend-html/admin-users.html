@@ -1,0 +1,275 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<title>账号管理</title>
+<style>
+.au-root{
+  --au-bg:#f5f7fa; --au-card:#fff; --au-border:#e3e8ef; --au-border2:#eef1f5;
+  --au-text:#1f2937; --au-sub:#6b7280; --au-accent:#1B3F7A; --au-accent2:#2754a3; --au-accent-sub:#eef3fb;
+  --au-green:#16a34a; --au-green-sub:#f0fdf4; --au-red:#dc2626; --au-red-sub:#fee2e2; --au-amber:#ca8a04;
+  --au-hover:#f3f6fb;
+  position:relative; min-height:100%; overflow:auto; background:var(--au-bg); color:var(--au-text);
+  font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"PingFang SC","Microsoft YaHei",sans-serif;
+}
+.au-wrap{ max-width:1120px; margin:0 auto; padding:22px 26px 48px; }
+.au-head{ display:flex; align-items:flex-start; justify-content:space-between; margin-bottom:18px; gap:16px; }
+.au-title{ font-size:20px; font-weight:700; }
+.au-sub{ color:var(--au-sub); font-size:13px; margin-top:5px; line-height:1.6; }
+.au-btn{ height:34px; padding:0 16px; border-radius:8px; border:1px solid var(--au-accent); background:var(--au-accent); color:#fff; cursor:pointer; font-size:13px; white-space:nowrap; }
+.au-btn:hover{ background:var(--au-accent2); }
+.au-btn.ghost{ background:#fff; color:var(--au-accent); }
+.au-btn.ghost:hover{ background:var(--au-accent-sub); }
+.au-card{ background:var(--au-card); border:1px solid var(--au-border); border-radius:14px; padding:4px; box-shadow:0 1px 3px rgba(16,24,40,.04); }
+.au-table{ width:100%; border-collapse:collapse; font-size:13px; }
+.au-table th{ text-align:left; color:var(--au-sub); font-weight:600; padding:12px 14px; border-bottom:1px solid var(--au-border2); white-space:nowrap; }
+.au-table td{ padding:12px 14px; border-bottom:1px solid var(--au-border2); vertical-align:middle; }
+.au-table tr:last-child td{ border-bottom:0; }
+.au-pill{ display:inline-block; padding:2px 9px; border-radius:9px; font-size:12px; font-weight:600; }
+.au-pill.admin{ background:var(--au-accent-sub); color:var(--au-accent); }
+.au-pill.user{ background:var(--au-hover); color:var(--au-sub); }
+.au-pill.on{ background:var(--au-green-sub); color:var(--au-green); }
+.au-pill.off{ background:var(--au-red-sub); color:var(--au-red); }
+.au-ops{ display:flex; gap:10px; justify-content:flex-end; }
+.au-link{ color:var(--au-accent); cursor:pointer; font-size:13px; }
+.au-link.danger{ color:var(--au-red); }
+.au-link:hover{ text-decoration:underline; }
+.au-perm{ display:flex; flex-wrap:wrap; gap:5px; max-width:360px; }
+.au-perm .t{ font-size:11px; padding:2px 7px; border-radius:7px; background:var(--au-hover); color:var(--au-sub); }
+.au-empty{ padding:44px; text-align:center; color:var(--au-sub); font-size:13px; }
+.au-modal{ position:fixed; inset:0; z-index:50; display:flex; align-items:center; justify-content:center; background:rgba(15,23,42,.45); }
+.au-modal-box{ width:480px; max-width:92vw; max-height:86vh; overflow:auto; background:#fff; border-radius:14px; padding:20px 22px; box-shadow:0 20px 60px rgba(0,0,0,.3); }
+.au-modal-box h3{ margin:0 0 14px; font-size:16px; }
+.au-field{ margin-bottom:12px; }
+.au-field label{ display:block; font-size:12px; color:var(--au-sub); margin-bottom:4px; }
+.au-field input, .au-field select{ width:100%; height:36px; border:1px solid var(--au-border); border-radius:8px; padding:0 10px; font-size:13px; box-sizing:border-box; background:#fff; }
+.au-field input:focus, .au-field select:focus{ outline:none; border-color:var(--au-accent); }
+.au-checks{ display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-top:2px; }
+.au-check{ display:flex; align-items:center; gap:7px; font-size:13px; padding:7px 9px; border:1px solid var(--au-border); border-radius:8px; cursor:pointer; }
+.au-check input{ width:16px; height:16px; accent-color:var(--au-accent); }
+.au-check.on{ border-color:var(--au-accent); background:var(--au-accent-sub); }
+.au-modal-err{ color:var(--au-red); font-size:12px; min-height:16px; margin-top:6px; }
+.au-modal-actions{ display:flex; justify-content:flex-end; gap:10px; margin-top:14px; }
+.au-toast{ position:fixed; top:20px; left:50%; transform:translateX(-50%); background:var(--au-text); color:#fff; padding:9px 16px; border-radius:9px; font-size:13px; z-index:90; box-shadow:0 8px 24px rgba(0,0,0,.2); }
+</style>
+</head>
+<body>
+<div class="au-root" id="auRoot">
+  <div class="au-wrap">
+    <div class="au-head">
+      <div>
+        <div class="au-title">账号管理</div>
+        <div class="au-sub">管理员可创建用户并配置其可访问的模块权限；管理员默认拥有全部访问权限。<br/>普通用户的可见菜单由其权限决定，无权限的菜单项会自动隐藏。</div>
+      </div>
+      <button class="au-btn" id="auNew">+ 新建用户</button>
+    </div>
+    <div class="au-card">
+      <table class="au-table">
+        <thead><tr><th>用户名</th><th>显示名</th><th>角色</th><th>状态</th><th>权限</th><th style="text-align:right">操作</th></tr></thead>
+        <tbody id="auBody"></tbody>
+      </table>
+      <div class="au-empty" id="auEmpty" style="display:none">暂无用户</div>
+    </div>
+  </div>
+</div>
+<script>
+(function () {
+  var TOKEN = localStorage.getItem('token') || '';
+  function hd() { return { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + TOKEN }; }
+  var catalog = [];
+
+  function esc(s) {
+    return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+    });
+  }
+  function toast(msg) {
+    var t = document.createElement('div'); t.className = 'au-toast'; t.textContent = msg;
+    document.getElementById('auRoot').appendChild(t);
+    setTimeout(function () { t.remove(); }, 2200);
+  }
+  function catLabel(k) { for (var i = 0; i < catalog.length; i++) if (catalog[i].key === k) return catalog[i].label; return k; }
+
+  function loadCatalog(cb) {
+    fetch('/api/auth/permissions-catalog', { headers: hd() })
+      .then(function (x) { return x.ok ? x.json() : null; })
+      .then(function (r) { if (r && r.data) catalog = r.data; cb && cb(); })
+      .catch(function () { cb && cb(); });
+  }
+
+  var AU_CACHE = [];
+
+  function loadUsers() {
+    fetch('/api/auth/users?page=1&page_size=100', { headers: hd() })
+      .then(function (x) { if (x.status === 403) return { forbidden: true }; return x.json(); })
+      .then(function (r) {
+        if (r && r.forbidden) {
+          document.getElementById('auBody').innerHTML = '';
+          var e = document.getElementById('auEmpty'); e.style.display = 'block';
+          e.textContent = '无权限：仅管理员可访问账号管理';
+          return;
+        }
+        var items = (r && r.data && r.data.items) || [];
+        AU_CACHE = items;
+        render(items);
+      })
+      .catch(function () { toast('加载失败'); });
+  }
+
+  function render(items) {
+    var body = document.getElementById('auBody');
+    var empty = document.getElementById('auEmpty');
+    if (!items.length) { body.innerHTML = ''; empty.style.display = 'block'; empty.textContent = '暂无用户'; return; }
+    empty.style.display = 'none';
+    body.innerHTML = items.map(function (u) {
+      var rolePill = u.role === 'admin' ? '<span class="au-pill admin">管理员</span>' : '<span class="au-pill user">普通用户</span>';
+      var stPill = u.is_enabled ? '<span class="au-pill on">启用</span>' : '<span class="au-pill off">禁用</span>';
+      var perms = u.permissions || [];
+      var permHtml = perms.length
+        ? '<div class="au-perm">' + perms.map(function (p) { return '<span class="t">' + esc(catLabel(p)) + '</span>'; }).join('') + '</div>'
+        : '<span style="color:var(--au-sub)">—</span>';
+      return '<tr>' +
+        '<td>' + esc(u.username) + '</td>' +
+        '<td>' + esc(u.display_name || '') + '</td>' +
+        '<td>' + rolePill + '</td>' +
+        '<td>' + stPill + '</td>' +
+        '<td>' + permHtml + '</td>' +
+        '<td style="text-align:right"><div class="au-ops"><span class="au-link" data-edit="' + u.id + '">编辑</span><span class="au-link" data-reset="' + u.id + '">重置密码</span><span class="au-link danger" data-del="' + u.id + '">删除</span></div></td>' +
+        '</tr>';
+    }).join('');
+    body.querySelectorAll('[data-edit]').forEach(function (el) { el.onclick = function () { openEdit(+el.getAttribute('data-edit')); }; });
+    body.querySelectorAll('[data-reset]').forEach(function (el) { el.onclick = function () { openReset(+el.getAttribute('data-reset')); }; });
+    body.querySelectorAll('[data-del]').forEach(function (el) { el.onclick = function () { openDel(+el.getAttribute('data-del')); }; });
+  }
+
+  function modal(html) {
+    var m = document.createElement('div'); m.className = 'au-modal';
+    m.innerHTML = '<div class="au-modal-box">' + html + '</div>';
+    document.getElementById('auRoot').appendChild(m);
+    m.addEventListener('click', function (e) { if (e.target === m) m.remove(); });
+    return m;
+  }
+  function permChecks(selected) {
+    selected = selected || [];
+    return '<div class="au-checks">' + catalog.map(function (c) {
+      var on = selected.indexOf(c.key) >= 0 ? 'on' : '';
+      return '<label class="au-check ' + on + '"><input type="checkbox" value="' + c.key + '" ' + (on ? 'checked' : '') + '/>' + esc(c.label) + '</label>';
+    }).join('') + '</div>';
+  }
+  function bindChecks(box) {
+    box.querySelectorAll('.au-check input').forEach(function (inp) {
+      inp.addEventListener('change', function () { inp.closest('.au-check').classList.toggle('on', inp.checked); });
+    });
+  }
+  function getChecks(box) { var a = []; box.querySelectorAll('.au-check input:checked').forEach(function (i) { a.push(i.value); }); return a; }
+
+  function openNew() {
+    var def = catalog.filter(function (c) { return c.key !== 'users'; }).map(function (c) { return c.key; });
+    var box = modal(
+      '<h3>新建用户</h3>' +
+      '<div class="au-field"><label>用户名 *</label><input id="f_u" placeholder="字母/数字/下划线，≥2 位"/></div>' +
+      '<div class="au-field"><label>密码 *</label><input id="f_p" type="password" placeholder="至少 6 位"/></div>' +
+      '<div class="au-field"><label>显示名</label><input id="f_n" placeholder="可选"/></div>' +
+      '<div class="au-field"><label>角色</label><select id="f_r"><option value="user">普通用户</option><option value="admin">管理员</option></select></div>' +
+      '<div class="au-field"><label>邮箱</label><input id="f_e"/></div>' +
+      '<div class="au-field"><label>手机号</label><input id="f_ph"/></div>' +
+      '<div class="au-field"><label>可访问模块（普通用户由管理员配置；管理员默认全部）</label>' + permChecks(def) + '</div>' +
+      '<div class="au-modal-err" id="f_err"></div>' +
+      '<div class="au-modal-actions"><button class="au-btn ghost" id="f_cancel">取消</button><button class="au-btn" id="f_ok">创建</button></div>'
+    );
+    bindChecks(box);
+    box.querySelector('#f_cancel').onclick = function () { box.remove(); };
+    box.querySelector('#f_ok').onclick = function () {
+      var u = box.querySelector('#f_u').value.trim();
+      var p = box.querySelector('#f_p').value;
+      var err = box.querySelector('#f_err'); err.textContent = '';
+      if (u.length < 2) { err.textContent = '用户名至少 2 位'; return; }
+      if (p.length < 6) { err.textContent = '密码至少 6 位'; return; }
+      var role = box.querySelector('#f_r').value;
+      var perms = role === 'admin' ? [] : getChecks(box);
+      fetch('/api/auth/users', { method: 'POST', headers: hd(), body: JSON.stringify({
+        username: u, password: p, display_name: box.querySelector('#f_n').value.trim(),
+        role: role, email: box.querySelector('#f_e').value.trim(), phone: box.querySelector('#f_ph').value.trim(),
+        permissions: perms
+      }) }).then(function (x) { return x.json().then(function (d) { return { ok: x.ok, d: d }; }); })
+        .then(function (r) { if (r.ok) { box.remove(); toast('用户已创建'); loadUsers(); } else { err.textContent = (r.d && r.d.detail) || '创建失败'; } })
+        .catch(function () { err.textContent = '网络错误'; });
+    };
+  }
+
+  function openEdit(id) {
+    /* 修复(2026-09-07)：后端未实现 GET /api/auth/users/{id}（405）。
+       编辑所需字段全部在列表接口里，直接取 loadUsers 缓存，不再请求单用户。 */
+    var u = null;
+    for (var _i = 0; _i < AU_CACHE.length; _i++) { if (+AU_CACHE[_i].id === +id) { u = AU_CACHE[_i]; break; } }
+    if (!u) { loadUsers(); toast('数据已刷新，请重试'); return; }
+    (function (u) {
+        var box = modal(
+          '<h3>编辑用户 · ' + esc(u.username) + '</h3>' +
+          '<div class="au-field"><label>显示名</label><input id="f_n" value="' + esc(u.display_name || '') + '"/></div>' +
+          '<div class="au-field"><label>角色</label><select id="f_r"><option value="user" ' + (u.role === 'user' ? 'selected' : '') + '>普通用户</option><option value="admin" ' + (u.role === 'admin' ? 'selected' : '') + '>管理员</option></select></div>' +
+          '<div class="au-field"><label>邮箱</label><input id="f_e" value="' + esc(u.email || '') + '"/></div>' +
+          '<div class="au-field"><label>手机号</label><input id="f_ph" value="' + esc(u.phone || '') + '"/></div>' +
+          '<div class="au-field"><label>状态</label><select id="f_s"><option value="1" ' + (u.is_enabled ? 'selected' : '') + '>启用</option><option value="0" ' + (!u.is_enabled ? 'selected' : '') + '>禁用</option></select></div>' +
+          '<div class="au-field"><label>可访问模块（普通用户由管理员配置；管理员默认全部）</label>' + permChecks(u.permissions || []) + '</div>' +
+          '<div class="au-modal-err" id="f_err"></div>' +
+          '<div class="au-modal-actions"><button class="au-btn ghost" id="f_cancel">取消</button><button class="au-btn" id="f_ok">保存</button></div>'
+        );
+        bindChecks(box);
+        box.querySelector('#f_cancel').onclick = function () { box.remove(); };
+        box.querySelector('#f_ok').onclick = function () {
+          var role = box.querySelector('#f_r').value;
+          var perms = role === 'admin' ? [] : getChecks(box);
+          fetch('/api/auth/users/' + id, { method: 'PUT', headers: hd(), body: JSON.stringify({
+            display_name: box.querySelector('#f_n').value.trim(), role: role,
+            email: box.querySelector('#f_e').value.trim(), phone: box.querySelector('#f_ph').value.trim(),
+            is_enabled: box.querySelector('#f_s').value === '1', permissions: perms
+          }) }).then(function (x) { return x.json().then(function (d) { return { ok: x.ok, d: d }; }); })
+            .then(function (r) { if (r.ok) { box.remove(); toast('已保存'); loadUsers(); } else { box.querySelector('#f_err').textContent = (r.d && r.d.detail) || '保存失败'; } })
+            .catch(function () { box.querySelector('#f_err').textContent = '网络错误'; });
+        };
+      })(u);
+  }
+
+  function openReset(id) {
+    var box = modal(
+      '<h3>重置密码</h3>' +
+      '<div class="au-field"><label>新密码 *</label><input id="f_p" type="password" placeholder="至少 6 位"/></div>' +
+      '<div class="au-field"><label>确认新密码 *</label><input id="f_p2" type="password"/></div>' +
+      '<div class="au-modal-err" id="f_err"></div>' +
+      '<div class="au-modal-actions"><button class="au-btn ghost" id="f_cancel">取消</button><button class="au-btn" id="f_ok">重置</button></div>'
+    );
+    box.querySelector('#f_cancel').onclick = function () { box.remove(); };
+    box.querySelector('#f_ok').onclick = function () {
+      var p = box.querySelector('#f_p').value, p2 = box.querySelector('#f_p2').value, err = box.querySelector('#f_err'); err.textContent = '';
+      if (p.length < 6) { err.textContent = '密码至少 6 位'; return; }
+      if (p !== p2) { err.textContent = '两次输入不一致'; return; }
+      fetch('/api/auth/users/' + id, { method: 'PUT', headers: hd(), body: JSON.stringify({ password: p }) })
+        .then(function (x) { return x.json().then(function (d) { return { ok: x.ok, d: d }; }); })
+        .then(function (r) { if (r.ok) { box.remove(); toast('密码已重置'); } else { err.textContent = (r.d && r.d.detail) || '重置失败'; } })
+        .catch(function () { err.textContent = '网络错误'; });
+    };
+  }
+
+  function openDel(id) {
+    var box = modal(
+      '<h3>删除用户</h3>' +
+      '<p style="font-size:13px;color:var(--au-sub);margin:0 0 6px">确定删除该用户？此操作不可恢复。</p>' +
+      '<div class="au-modal-err" id="f_err"></div>' +
+      '<div class="au-modal-actions"><button class="au-btn ghost" id="f_cancel">取消</button><button class="au-btn" id="f_ok" style="border-color:var(--au-red);background:var(--au-red)">删除</button></div>'
+    );
+    box.querySelector('#f_cancel').onclick = function () { box.remove(); };
+    box.querySelector('#f_ok').onclick = function () {
+      fetch('/api/auth/users/' + id, { method: 'DELETE', headers: hd() })
+        .then(function (x) { return x.json().then(function (d) { return { ok: x.ok, d: d }; }); })
+        .then(function (r) { if (r.ok) { box.remove(); toast('已删除'); loadUsers(); } else { box.querySelector('#f_err').textContent = (r.d && r.d.detail) || '删除失败'; } })
+        .catch(function () { box.querySelector('#f_err').textContent = '网络错误'; });
+    };
+  }
+
+  document.getElementById('auNew').onclick = openNew;
+  loadCatalog(function () { loadUsers(); });
+})();
+</script>
+</body>
+</html>

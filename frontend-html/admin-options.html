@@ -1,0 +1,1583 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>资源管理</title>
+<style>
+.rc-root{
+  --navy-900:var(--accent-hover,var(--blue-900,#0d2c5e));
+  --navy-800:var(--accent,var(--blue-700,#1B3F7A));
+  --navy-700:var(--accent,var(--blue-700,#2754a3));
+  --navy-100:var(--accent-subtle,var(--blue-100,#e6eef9));
+  --g600:var(--success,var(--green-600,#16a34a));
+  --g100:var(--success-subtle,var(--green-100,#f0fdf4));
+  --a600:var(--warning,var(--amber-600,#ca8a04));
+  --a100:var(--warning-subtle,var(--amber-100,#fefce8));
+  --r600:var(--danger,var(--coral-600,#dc2626));
+  --r100:var(--danger-subtle,var(--coral-100,#fee2e2));
+  --n50:var(--surface-overlay,var(--surface-default,#fafbfc));
+  --n100:var(--surface-default,var(--neutral-100,#f5f7fa));
+  --n200:var(--border-subtle,var(--neutral-200,#e5e7eb));
+  --n300:var(--border-default,var(--neutral-300,#d1d5db));
+  --n400:var(--text-tertiary,var(--neutral-400,#9ca3af));
+  --n500:var(--text-secondary,var(--neutral-500,#6b7280));
+  --n900:var(--text-primary,var(--neutral-900,#1f2937));
+  background:var(--surface-default,var(--neutral-50,#f5f7fa));color:var(--text-primary,var(--neutral-900,#1f2937));min-height:100%;box-sizing:border-box;
+  font-family:'Geist','Inter',system-ui,-apple-system,sans-serif;
+  animation:rcFade .35s cubic-bezier(.16,1,.3,1);
+}
+@keyframes rcFade{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
+.rc-root *{box-sizing:border-box}
+
+.rc-head{padding:20px 28px 0;display:flex;align-items:flex-end;justify-content:space-between;gap:16px}
+.rc-head h1{font-size:20px;font-weight:700;margin:0;color:var(--navy-900);letter-spacing:-.02em}
+.rc-head .sub{font-size:13px;color:var(--n500);margin-top:4px}
+
+.rc-main{padding:20px 28px 28px;min-width:0}
+.rc-desc{font-size:13px;color:var(--n500);margin:0 0 16px}
+.rc-desc b{color:var(--navy-800)}
+
+/* 统计卡片（观感/动画与「硬件台账」页面 .stats/.stat 对齐：左色条 + 图标 tile + 大号等宽数字） */
+.rc-stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:16px;margin-bottom:18px}
+/* 概览底部简略数据条（替代原 4 张大卡片） */
+.rc-brief{display:flex;flex-wrap:wrap;gap:10px;margin-top:2px}
+.rc-brief-it{display:inline-flex;align-items:baseline;gap:7px;background:var(--n50);border:1px solid var(--n200);border-radius:10px;padding:9px 15px;transition:border-color .15s,box-shadow .15s}
+.rc-brief-it:hover{border-color:var(--navy-700);box-shadow:0 6px 18px rgba(0,0,0,.06)}
+.rc-brief-it b{font-size:17px;font-weight:700;color:var(--navy-800);line-height:1}
+.rc-brief-it span{font-size:12px;color:var(--n500)}
+.rc-stat{
+  background:var(--n50);border:1px solid var(--n200);border-radius:14px;padding:20px;
+  box-shadow:0 1px 2px rgba(16,24,40,.04);position:relative;overflow:hidden;
+  opacity:0;animation:rcStatFade .5s cubic-bezier(.16,1,.3,1) both;animation-delay:calc(var(--i,0)*.09s);
+}
+.rc-stat:hover{transform:translateY(-3px);box-shadow:0 8px 24px rgba(16,24,40,.10);transition:transform .2s,box-shadow .2s}
+.rc-stat::after{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--bar,transparent)}
+.rc-stat[data-jump]{cursor:pointer}
+.rc-stat[data-jump]:hover{border-color:var(--navy-700)}
+@keyframes rcStatFade{from{opacity:0}to{opacity:1}}
+@media(prefers-reduced-motion:reduce){.rc-stat{animation:none;opacity:1}}
+.rc-stat-ico{display:inline-flex;width:30px;height:30px;border-radius:9px;align-items:center;justify-content:center;margin-bottom:10px;background:color-mix(in srgb,currentColor 13%,transparent)}
+.rc-stat-ico svg{width:17px;height:17px}
+.rc-stat-k{font-size:11px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--n500)}
+.rc-stat-v{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:32px;font-weight:700;line-height:1.1;margin-top:8px;letter-spacing:-.02em;color:var(--n900)}
+.rc-stat-x{font-size:11px;color:var(--n400);margin-top:2px}
+.rc-stat-x .on{color:var(--g600);font-weight:600}
+.rc-stat-x .off{color:var(--r600);font-weight:600}
+.rc-stat-x .warn{color:var(--a600);font-weight:600}
+/* 概览：数据体检条（把统计数字变成可行动的发现） */
+.rc-checkup{display:flex;align-items:center;gap:10px;flex-wrap:wrap;background:var(--a100);border:1px solid color-mix(in srgb,var(--a600) 25%,transparent);border-radius:10px;padding:9px 14px;margin-bottom:18px;font-size:13px}
+.rc-checkup .t{font-weight:700;color:var(--a600)}
+.rc-checkup .chip{display:inline-flex;align-items:center;gap:4px;background:var(--n50);border:1px solid color-mix(in srgb,var(--a600) 30%,transparent);border-radius:999px;padding:4px 12px;color:var(--navy-800);cursor:pointer;font-size:12.5px;transition:all .15s}
+.rc-checkup .chip:hover{border-color:var(--a600);box-shadow:0 4px 12px rgba(0,0,0,.06);transform:translateY(-1px)}
+.rc-checkup .chip b{font-weight:700}
+.rc-checkup .okchip{display:inline-flex;align-items:center;gap:6px;background:var(--g100);border:1px solid color-mix(in srgb,var(--g600) 30%,transparent);border-radius:999px;padding:4px 12px;color:var(--g600);font-size:12.5px;font-weight:600}
+/* 总览三模块：硬件类型分布 / 在线状态环图 / 机房机柜概览 */
+.ov3{display:grid;grid-template-columns:1.15fr 1fr 1.25fr;gap:14px;margin-bottom:18px}
+@media (max-width:1150px){.ov3{grid-template-columns:1fr}}
+.ov-card{background:var(--n50);border:1px solid var(--n200);border-radius:12px;padding:16px 18px}
+.ov-card h3{margin:0 0 12px;font-size:14px;font-weight:700;color:var(--navy-900);display:flex;align-items:center;justify-content:space-between}
+.ov-card h3 .more{font-size:12px;color:var(--n500);font-weight:400;cursor:pointer}
+.ov-card h3 .more:hover{color:var(--navy-700)}
+.ov-bar{display:grid;grid-template-columns:96px 1fr 40px;align-items:center;gap:10px;padding:5px 0;font-size:13px}
+.ov-bar .nm{color:var(--n500);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ov-bar .trk{height:9px;border-radius:5px;background:var(--navy-100);overflow:hidden}
+.ov-bar .trk i{display:block;height:100%;border-radius:5px}
+.ov-bar .v{text-align:right;font-weight:700;color:var(--navy-900);font-variant-numeric:tabular-nums}
+.ov-rings{display:flex;justify-content:space-around;gap:8px}
+.ov-ring{display:flex;flex-direction:column;align-items:center;gap:6px}
+.ov-ring .dg{position:relative;width:104px;height:104px}
+.ov-ring .dg svg{transform:rotate(-90deg)}
+.ov-ring .ctr{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center}
+.ov-ring .ctr b{font-size:19px;font-weight:700;color:var(--navy-900)}
+.ov-ring .ctr span{font-size:10.5px;color:var(--n500)}
+.ov-ring .cap{font-size:12px;color:var(--n500)}
+.ov-ring .cap b{color:var(--navy-900)}
+.ov-room{display:grid;grid-template-columns:132px 1fr 92px;align-items:center;gap:10px;padding:6px 0;border-bottom:1px dashed var(--n200);font-size:13px}
+.ov-room:last-of-type{border-bottom:0}
+.ov-room .nm{color:var(--navy-900);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ov-room .cabs{display:flex;gap:3px;flex-wrap:wrap}
+.ov-room .cb{width:13px;height:22px;border-radius:2.5px;background:var(--navy-100);border:1px solid color-mix(in srgb,var(--navy-700) 35%,transparent);position:relative}
+.ov-room .cb::after{content:"";position:absolute;left:2.5px;right:2.5px;top:3px;bottom:3px;background:repeating-linear-gradient(180deg,var(--n200) 0 1.5px,transparent 1.5px 4.5px)}
+.ov-room .mt{color:var(--n500);font-size:12px;text-align:right;white-space:nowrap}
+.ov-room .mt b{color:var(--navy-900)}
+
+/* 分类入口卡片 */
+.rc-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:14px}
+.rc-card{background:var(--n50);border:1px solid var(--n200);border-radius:12px;padding:18px;cursor:pointer;transition:all .2s}
+.rc-card:hover{box-shadow:0 8px 26px rgba(0,0,0,.08);transform:translateY(-3px);border-color:var(--navy-700)}
+.rc-card .hd{display:flex;align-items:center;gap:10px;margin-bottom:14px;padding-bottom:14px;border-bottom:1px solid var(--n200)}
+.rc-card .hd .ico{width:34px;height:34px;border-radius:8px;display:grid;place-items:center}
+.rc-card .hd .ico svg{width:17px;height:17px}
+.rc-card .hd h3{font-size:14px;font-weight:650;margin:0;color:var(--navy-900)}
+.rc-card .hd .num{margin-left:auto;font-size:18px;font-weight:700;color:var(--navy-800)}
+.rc-card .desc{font-size:12px;color:var(--n500);margin-bottom:12px;line-height:1.5}
+.rc-card .go{font-size:12px;color:var(--navy-700);font-weight:600;display:inline-flex;align-items:center;gap:4px;transition:gap .15s}
+.rc-card:hover .go{gap:8px}
+
+/* 表格 */
+.rc-table{background:var(--n50);border:1px solid var(--n200);border-radius:12px;overflow-x:auto;margin-bottom:14px}
+.rc-table table{width:100%;border-collapse:collapse;font-size:13px}
+.rc-table th{text-align:left;padding:11px 16px;font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:var(--n400);font-weight:600;border-bottom:1px solid var(--n200);background:var(--n50)}
+.rc-table td{padding:12px 16px;border-bottom:1px solid var(--n100)}
+.rc-table tr:last-child td{border-bottom:none}
+.rc-table tr:hover td{background:var(--n50)}
+.rc-table .mono{font-family:ui-monospace,Menlo,monospace;font-size:12px}
+
+/* 机房管理卡片 */
+.rc-room-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:14px}
+.rc-room{background:var(--n50);border:1px solid var(--n200);border-radius:12px;overflow:hidden;transition:all .2s}
+.rc-room:hover{box-shadow:0 8px 26px rgba(0,0,0,.08);transform:translateY(-2px)}
+.rc-room-head{display:flex;align-items:center;gap:10px;padding:14px 16px;border-bottom:1px solid var(--n100)}
+.rc-room-head .ico{width:34px;height:34px;border-radius:8px;background:var(--g100);color:var(--g600);display:grid;place-items:center;flex-shrink:0}
+.rc-room-head .ico svg{width:17px;height:17px}
+.rc-room-head .info{flex:1;min-width:0}
+.rc-room-head .name{font-size:14px;font-weight:600;color:var(--n900)}
+.rc-room-head .meta{font-size:12px;color:var(--n400);margin-top:2px}
+.rc-room-head .rm{background:none;border:none;color:var(--r600);font-size:12px;cursor:pointer;padding:4px 8px;border-radius:6px;opacity:0;transition:all .15s;flex-shrink:0}
+.rc-room:hover .rm{opacity:1}
+.rc-room-head .rm:hover{background:var(--r100)}
+.rc-room-body{padding:14px 16px;display:flex;flex-wrap:wrap;gap:8px}
+.rc-host-chip{display:inline-flex;align-items:center;gap:6px;background:var(--n100);border:1px solid var(--n200);border-radius:8px;padding:5px 8px 5px 12px;font-size:12px;color:var(--n900);transition:all .15s}
+.rc-host-chip .mono{font-family:ui-monospace,Menlo,monospace;font-size:12px}
+.rc-host-chip:hover{border-color:var(--navy-700);background:var(--navy-100)}
+.rc-host-chip .x{width:18px;height:18px;border:none;border-radius:50%;background:var(--n200);color:var(--n500);font-size:12px;line-height:18px;cursor:pointer;display:grid;place-items:center;padding:0;transition:all .15s;flex-shrink:0}
+.rc-host-chip:hover .x{background:var(--r600);color:#fff}
+
+/* 行式卡片列表 */
+.rc-list{background:var(--n50);border:1px solid var(--n200);border-radius:12px;overflow:hidden;margin-bottom:14px}
+.rc-item{display:flex;align-items:center;gap:14px;padding:13px 18px;border-bottom:1px solid var(--n100);transition:background .15s}
+.rc-item:last-child{border-bottom:none}
+.rc-item:hover{background:var(--n50)}
+.rc-item .ico{width:38px;height:38px;border-radius:10px;display:grid;place-items:center;flex-shrink:0}
+.rc-item .ico svg{width:18px;height:18px}
+.rc-item .avatar{width:38px;height:38px;border-radius:50%;display:grid;place-items:center;flex-shrink:0;font-size:15px;font-weight:600;color:#fff}
+.rc-item .info{flex:1;min-width:0}
+.rc-item .name{font-size:14px;font-weight:600;color:var(--n900)}
+.rc-item .meta{font-size:12px;color:var(--n400);margin-top:2px}
+.rc-item .count{font-size:12px;color:var(--navy-700);background:var(--navy-100);padding:3px 10px;border-radius:12px;font-weight:600;white-space:nowrap}
+.rc-item .rc-count{cursor:pointer;transition:all .15s}
+.rc-item .rc-count:hover{background:var(--navy-800);color:#fff}
+.rc-item .rc-count-empty{cursor:default}
+.rc-item .rc-count-empty:hover{background:var(--navy-100);color:var(--navy-700)}
+/* 关联资源悬浮提示 */
+.rc-tip{position:fixed;z-index:6000;background:var(--navy-900);color:#fff;border-radius:10px;padding:10px 14px;font-size:12px;box-shadow:0 10px 30px rgba(0,0,0,.3);pointer-events:none;display:none;max-width:340px;line-height:1.8}
+.rc-tip .t-row{display:flex;align-items:center;gap:10px;white-space:nowrap}
+.rc-tip .t-name{font-weight:600;overflow:hidden;text-overflow:ellipsis;max-width:150px}
+.rc-tip .t-ip{color:rgba(255,255,255,.55);font-family:ui-monospace,Menlo,monospace;font-size:11px;margin-left:auto;flex-shrink:0}
+.rc-tip .t-more{color:rgba(255,255,255,.55);margin-top:4px;font-size:11px}
+.rc-item .del{background:none;color:var(--r600);border:none;font-size:12px;padding:6px 10px;cursor:pointer;border-radius:6px;opacity:0;transition:all .15s}
+.rc-item:hover .del{opacity:1}
+.rc-item .del:hover{background:var(--r100)}
+
+/* 项目 / 负责人 标签卡片网格 */
+.rc-tags-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:12px;margin-bottom:14px}
+.rc-tagcard{position:relative;display:flex;flex-direction:column;gap:10px;background:var(--n50);border:1px solid var(--n200);border-radius:12px;padding:14px 16px 12px;transition:transform .2s,box-shadow .2s,border-color .2s}
+.rc-tagcard:hover{transform:translateY(-2px);box-shadow:0 8px 22px rgba(0,0,0,.08);border-color:var(--n300)}
+.rc-tagcard .hd{display:flex;align-items:center;gap:10px;min-width:0}
+.rc-tagcard .avatar{width:36px;height:36px;border-radius:50%;display:grid;place-items:center;flex-shrink:0;font-size:14px;font-weight:600;color:#fff}
+.rc-tagcard .ico{width:36px;height:36px;border-radius:10px;display:grid;place-items:center;flex-shrink:0}
+.rc-tagcard .ico svg{width:17px;height:17px}
+.rc-tagcard .nm{flex:1;min-width:0;font-size:14px;font-weight:600;color:var(--n900);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.rc-tagcard .count{font-size:12px;color:var(--navy-700);background:var(--navy-100);padding:3px 10px;border-radius:12px;font-weight:600;white-space:nowrap}
+.rc-tagcard .rc-count{cursor:pointer;transition:all .15s}
+.rc-tagcard .rc-count:hover{background:var(--navy-800);color:#fff}
+.rc-tagcard .rc-count-empty{cursor:default}
+.rc-tagcard .rc-count-empty:hover{background:var(--navy-100);color:var(--navy-700)}
+/* 状态分布堆叠条（在线/维护/离线） */
+.rc-tagcard .stbar{display:flex;height:6px;border-radius:3px;background:var(--n100);overflow:hidden}
+.rc-tagcard .stbar i{display:block;height:100%}
+.rc-tagcard .stmeta{display:flex;gap:10px;flex-wrap:wrap;font-size:11.5px;color:var(--n400)}
+.rc-tagcard .stmeta .on{color:var(--g600);font-weight:600}
+.rc-tagcard .stmeta .mt{color:var(--a600);font-weight:600}
+.rc-tagcard .stmeta .off{color:var(--n500);font-weight:600}
+/* 关联资源名 chips */
+.rc-tagcard .chips{display:flex;flex-wrap:wrap;gap:5px}
+.rc-tagcard .chips .chip{font-size:11px;line-height:1.5;color:var(--n500);background:var(--n100);border:1px solid var(--n200);border-radius:6px;padding:1px 8px;max-width:100%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.rc-tagcard .chips .chip.more{color:var(--navy-700);background:var(--navy-100);border-color:transparent;font-weight:600}
+.rc-tagcard .chips .chip.none{border-style:dashed;color:var(--n400);background:transparent}
+/* 悬停操作区：查看资源 / 删除 */
+.rc-tagcard .acts{display:flex;gap:6px;margin-top:auto;opacity:0;transform:translateY(4px);transition:all .18s;pointer-events:none}
+.rc-tagcard:hover .acts,.rc-tagcard:focus-within .acts{opacity:1;transform:translateY(0);pointer-events:auto}
+.rc-tagcard .act{display:inline-flex;align-items:center;gap:5px;font-size:12px;line-height:1;padding:6px 10px;border-radius:7px;border:1px solid var(--n300);background:var(--n50);color:var(--navy-700);cursor:pointer;transition:all .15s}
+.rc-tagcard .act svg{width:13px;height:13px}
+.rc-tagcard .act.view:hover{background:var(--navy-100);border-color:var(--navy-700)}
+.rc-tagcard .act.del{color:var(--r600);border-color:var(--r100)}
+.rc-tagcard .act.del:hover{background:var(--r100);border-color:var(--r600)}
+/* 空态引导 */
+.rc-empty-box .eb-ico{color:var(--n300);margin-bottom:10px}
+.rc-empty-box .eb-ico svg{width:36px;height:36px}
+.rc-empty-box .eb-t{font-size:13px;color:var(--n500);margin-top:4px}
+
+/* 状态 badge */
+.badge{display:inline-flex;align-items:center;font-size:11px;font-weight:600;padding:2px 10px;border-radius:10px}
+.badge .dot{width:6px;height:6px;border-radius:50%;margin-right:5px}
+.b-on{background:var(--g100);color:var(--g600)}.b-on .dot{background:var(--g600)}
+.b-off{background:var(--n100);color:var(--n500)}.b-off .dot{background:var(--n400)}
+.b-mt{background:var(--a100);color:var(--a600)}.b-mt .dot{background:var(--a600)}
+
+/* 表单 */
+.rc-form{background:var(--n50);border:1px solid var(--n200);border-radius:12px;padding:18px}
+.rc-form .row{display:flex;gap:10px}
+.rc-inp{flex:1;padding:9px 13px;border:1px solid var(--n300);border-radius:8px;font-size:13px;background:var(--n100);color:var(--n900);transition:all .15s;min-height:38px;box-sizing:border-box}
+.rc-inp::placeholder{color:var(--n400)}
+.rc-inp:focus{outline:none;border-color:var(--navy-700);box-shadow:0 0 0 3px var(--navy-100)}
+select.rc-inp{height:38px;appearance:none;-webkit-appearance:none;background-image:url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%236b7280' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 12px center;padding-right:34px;cursor:pointer}
+.rc-field{display:grid;gap:6px}
+.rc-field label{font-size:12px;color:var(--n500);font-weight:500}
+.rc-btn{padding:9px 18px;font-size:13px;font-weight:500;border-radius:8px;cursor:pointer;border:1px solid transparent;white-space:nowrap;transition:all .15s}
+.rc-btn-p{background:var(--navy-800);color:#fff}
+.rc-btn-p:hover{background:var(--navy-900)}
+.rc-btn-p:active{transform:scale(.97)}
+
+.rc-muted{color:var(--n400);font-size:12px}
+.rc-empty-box{background:var(--n50);border:1px dashed var(--n300);border-radius:12px;padding:40px;text-align:center;color:var(--n400)}
+
+.rc-search{display:flex;align-items:center;gap:8px;background:var(--n50);border:1px solid var(--n200);border-radius:12px;padding:9px 14px;margin-bottom:18px;transition:border-color .15s}
+.rc-search:focus-within{border-color:var(--navy-700)}
+.rc-search svg{width:15px;height:15px;color:var(--n400)}
+.rc-search input{flex:1;border:none;outline:none;font-size:13px;background:none;color:var(--n900)}
+.rc-search input::placeholder{color:var(--n400)}
+
+.toast{position:fixed;bottom:24px;right:24px;background:var(--navy-900);color:#fff;border-radius:10px;padding:12px 18px;font-size:13px;z-index:9999;opacity:0;transform:translateY(10px);transition:all .3s;pointer-events:none}
+.toast.show{opacity:1;transform:translateY(0)}
+
+/* 台账操作按钮 */
+.rc-op{background:none;border:1px solid var(--n300);color:var(--navy-700);font-size:12px;padding:4px 10px;border-radius:6px;cursor:pointer;margin-right:6px;transition:all .15s}
+.rc-op:hover{background:var(--navy-100);border-color:var(--navy-700)}
+.rc-op.del{color:var(--r600);border-color:var(--r100)}
+.rc-op.del:hover{background:var(--r100);border-color:var(--r600)}
+
+/* 台账工具栏 */
+.rc-toolbar{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:14px;flex-wrap:wrap}
+.rc-toolbar .title{font-size:15px;font-weight:650;color:var(--navy-900);white-space:nowrap}
+.rc-toolbar .actions{display:flex;gap:8px;flex-shrink:0;align-items:center;flex-wrap:wrap}
+.rc-btn-ghost{background:var(--n50);border:1px solid var(--n300);color:var(--n500);padding:9px 16px;font-size:13px;font-weight:500;border-radius:8px;cursor:pointer;transition:all .15s;white-space:nowrap}
+.rc-btn-ghost:hover{border-color:var(--navy-700);color:var(--navy-700);background:var(--navy-100)}
+.rc-btn-ghost:active{transform:scale(.97)}
+.rc-btn-ghost.on{border-color:var(--navy-700);color:var(--navy-700);background:var(--navy-100);font-weight:600}
+
+/* 按项目分组头 */
+
+/* 批量导入弹窗 */
+.rc-import-ta{width:100%;min-height:150px;resize:vertical;border:1px solid var(--n300);border-radius:8px;padding:10px 12px;font-size:12px;font-family:ui-monospace,Menlo,monospace;background:var(--n100);color:var(--n900);line-height:1.7}
+.rc-import-ta:focus{outline:none;border-color:var(--navy-700);box-shadow:0 0 0 3px var(--navy-100)}
+.rc-import-hint{font-size:12px;color:var(--n400);line-height:1.7}
+.rc-import-hint code{background:var(--n100);padding:1px 6px;border-radius:4px;color:var(--navy-700)}
+.rc-import-result{font-size:12px;margin-top:10px;line-height:1.8;display:none;background:var(--n100);border-radius:8px;padding:10px 14px;max-height:160px;overflow-y:auto}
+.rc-import-result.ok{display:block;color:var(--g600)}
+.rc-import-result.has-err{display:block;color:var(--r600)}
+.rc-import-result .line{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+
+/* 密码掩码 */
+.pw-cell{display:inline-flex;align-items:center;gap:6px}
+.pw-val{display:inline-block;width:96px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-family:ui-monospace,Menlo,monospace;font-size:12px;vertical-align:middle}
+.pw-eye{background:none;border:none;cursor:pointer;padding:2px;color:var(--n400);display:inline-flex;align-items:center;transition:color .15s;flex-shrink:0}
+.pw-eye:hover{color:var(--navy-700)}
+.pw-eye svg{width:15px;height:15px}
+/* 编辑弹窗密码输入 + 眼睛 */
+.rc-inp-wrap{position:relative;flex:1}
+.rc-inp-wrap .rc-inp{width:100%;padding-right:36px}
+.rc-inp-eye{position:absolute;right:8px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;color:var(--n400);padding:4px;display:inline-flex;align-items:center}
+.rc-inp-eye:hover{color:var(--navy-700)}
+.rc-inp-eye svg{width:16px;height:16px}
+/* 机器同步区块 */
+.rc-sec-title{font-size:14px;font-weight:650;color:var(--navy-900);margin:22px 0 10px}
+.rc-table-scroll{max-height:340px;overflow-y:auto}
+
+/* 编辑弹窗 */
+.rc-modal{position:fixed;inset:0;z-index:5000;display:flex;align-items:center;justify-content:center}
+.rc-modal-mask{position:absolute;inset:0;background:rgba(15,23,42,.45)}
+.rc-modal-box{position:relative;background:var(--n50);border-radius:14px;width:520px;max-width:94vw;box-shadow:0 20px 60px rgba(0,0,0,.28);overflow:hidden;pointer-events:auto;animation:rcModalIn .2s cubic-bezier(.16,1,.3,1)}
+@keyframes rcModalIn{from{opacity:0;transform:translateY(12px) scale(.97)}to{opacity:1;transform:translateY(0) scale(1)}}
+.rc-modal-head{display:flex;align-items:center;justify-content:space-between;padding:16px 20px;font-size:15px;font-weight:650;color:var(--navy-900);border-bottom:1px solid var(--n200)}
+.rc-modal-x{cursor:pointer;font-size:20px;color:var(--n400);line-height:1;padding:0 4px}
+.rc-modal-x:hover{color:var(--n900)}
+.rc-modal-body{padding:20px;display:grid;gap:12px}
+.rc-form2{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:12px}
+.rc-form2 > .rc-field{min-width:0}
+.rc-form2 select.rc-inp{width:100%}
+.rc-modal-foot{display:flex;justify-content:flex-end;gap:10px;padding:14px 20px;border-top:1px solid var(--n200)}
+
+@media(prefers-reduced-motion:reduce){.rc-root{animation:none}}
+
+/* 资源详情抽屉（结构/交互/动画与硬件台账一致：右侧滑入 + 全屏遮罩压暗侧栏） */
+.rc-layer{position:fixed;inset:0;z-index:5000;pointer-events:none;
+  /* 设计 token：抽屉被 portal 到 document.body 后不再处于 .rc-root 子树，需在此自带变量 */
+  --navy-900:var(--accent-hover,var(--blue-900,#0d2c5e));
+  --navy-800:var(--accent,var(--blue-700,#1B3F7A));
+  --navy-700:var(--accent,var(--blue-700,#2754a3));
+  --navy-100:var(--accent-subtle,var(--blue-100,#e6eef9));
+  --g600:var(--success,var(--green-600,#16a34a));
+  --g100:var(--success-subtle,var(--green-100,#f0fdf4));
+  --a600:var(--warning,var(--amber-600,#ca8a04));
+  --a100:var(--warning-subtle,var(--amber-100,#fefce8));
+  --r600:var(--danger,var(--coral-600,#dc2626));
+  --r100:var(--danger-subtle,var(--coral-100,#fee2e2));
+  --n50:var(--surface-overlay,var(--surface-default,#fafbfc));
+  --n100:var(--surface-default,var(--neutral-100,#f5f7fa));
+  --n200:var(--border-subtle,var(--neutral-200,#e5e7eb));
+  --n300:var(--border-default,var(--neutral-300,#d1d5db));
+  --n400:var(--text-tertiary,var(--neutral-400,#9ca3af));
+  --n500:var(--text-secondary,var(--neutral-500,#6b7280));
+  --n900:var(--text-primary,var(--neutral-900,#1f2937));
+}
+.rc-scrim{position:absolute;inset:0;background:rgba(15,23,42,.45);animation:rcFade .2s;pointer-events:auto}
+@keyframes rcFade{from{opacity:0}to{opacity:1}}
+.rc-drawer{position:absolute;top:0;right:0;bottom:0;width:min(560px,100%);background:var(--n50);border-left:1px solid var(--n200);box-shadow:0 20px 60px rgba(0,0,0,.25);display:flex;flex-direction:column;pointer-events:auto;animation:rcSlide .35s cubic-bezier(.16,1,.3,1)}
+@keyframes rcSlide{from{transform:translateX(100%)}}
+.rc-drawer-head{display:flex;align-items:flex-start;gap:12px;padding:18px 20px 14px;border-bottom:1px solid var(--n200)}
+.rc-drawer-title{font-size:17px;font-weight:650;margin:0;color:var(--navy-900);display:flex;align-items:center;gap:8px;flex-wrap:wrap;line-height:1.3}
+.rc-drawer-sub{font-size:12px;color:var(--n400);margin-top:3px}
+.rc-icon-btn{background:none;border:1px solid transparent;border-radius:8px;padding:6px;cursor:pointer;color:var(--n500);display:grid;place-items:center;transition:all .15s}
+.rc-icon-btn:hover{background:var(--n100);color:var(--n900)}
+.rc-icon-btn svg{width:18px;height:18px;stroke-width:1.8}
+.rc-drawer-body{flex:1;overflow-y:auto;padding:18px 20px}
+.rc-drawer-foot{padding:14px 20px;border-top:1px solid var(--n200);display:flex;gap:10px;flex-wrap:wrap}
+.rc-sec{margin-bottom:22px}
+.rc-sec-t{font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--n400);margin-bottom:12px;display:flex;align-items:center;gap:8px}
+.rc-sec-t::after{content:"";flex:1;height:1px;background:var(--n200)}
+.rc-kv{display:grid;grid-template-columns:84px 1fr;gap:8px 14px;font-size:13px}
+.rc-kv dt{color:var(--n500);font-size:12px;padding-top:1px}
+.rc-kv dd{margin:0;word-break:break-all;color:var(--n900)}
+.rc-tag{display:inline-block;padding:1px 8px;border-radius:6px;background:var(--navy-100);color:var(--navy-800);font-size:12px;margin:1px 4px 1px 0}
+.rc-cmt{display:flex;gap:12px;padding:10px 0;border-bottom:1px solid var(--n100)}
+.rc-cmt:last-child{border-bottom:none}
+.rc-cmt-av{width:26px;height:26px;border-radius:50%;flex:0 0 26px;display:grid;place-items:center;background:var(--navy-100);color:var(--navy-800);font-size:11px;font-weight:700}
+.rc-cmt-h{display:flex;align-items:baseline;gap:8px;margin-bottom:2px}
+.rc-cmt-u{font-size:12px;font-weight:600;color:var(--n900)}
+.rc-cmt-t{font-size:11px;color:var(--n400)}
+.rc-cmt-x{font-size:13px;line-height:1.55;word-break:break-word;color:var(--n900);margin-top:2px}
+.rc-cmt-box{display:flex;gap:8px;margin-top:10px}
+.rc-cmt-box .rc-inp{flex:1}
+.rc-tl{position:relative;padding-left:18px}
+.rc-tl::before{content:"";position:absolute;left:4px;top:6px;bottom:6px;width:1px;background:var(--n200)}
+.rc-tl-i{position:relative;padding-bottom:14px}
+.rc-tl-i:last-child{padding-bottom:0}
+.rc-tl-i::before{content:"";position:absolute;left:-18px;top:5px;width:7px;height:7px;border-radius:50%;background:var(--navy-700);box-shadow:0 0 0 3px var(--n50)}
+.rc-tl-a{font-size:13px;line-height:1.4;color:var(--n900)}
+.rc-tl-m{font-size:11px;color:var(--n400);margin-top:1px}
+.rc-spacer{flex:1}
+.rc-btn-secondary{background:var(--n50);color:var(--n900);border:1px solid var(--n300)}
+.rc-btn-secondary:hover{background:var(--n100);border-color:var(--n500)}
+.rc-btn-danger{background:var(--r600);color:#fff;border:1px solid var(--r600)}
+.rc-btn-danger:hover{background:#b91c1c;border-color:#b91c1c}
+</style>
+</head>
+<body>
+<div class="rc-root">
+  <header class="rc-head">
+    <div>
+      <h1 id="rcHeadTitle">资源管理</h1>
+      <div class="sub" id="rcHeadSub">统一管理机房、项目与负责人</div>
+    </div>
+  </header>
+  <main class="rc-main" id="rcMain"></main>
+  <div class="toast" id="toast"></div>
+  <div class="rc-tip" id="rcTip"></div>
+
+<div class="rc-modal" id="rcModal" style="display:none">
+  <div class="rc-modal-mask" data-closemodal="1"></div>
+  <div class="rc-modal-box">
+    <div class="rc-modal-head" id="rcModalHead">编辑资源<span class="rc-modal-x" data-closemodal="1">×</span></div>
+    <div class="rc-modal-body">
+      <div class="rc-field"><label>资源名称</label><input class="rc-inp" id="em_name" placeholder="必填"></div>
+      <div class="rc-form2">
+        <div class="rc-field"><label>本机 IP</label><input class="rc-inp" id="em_vm" placeholder="10.20.x.x"></div>
+        <div class="rc-field">
+          <label>父级物理机</label>
+          <select class="rc-inp" id="em_pve"><option value="">— 未关联 —</option></select>
+        </div>
+      </div>
+      <div class="rc-form2">
+        <div class="rc-field"><label>域名</label><input class="rc-inp" id="em_domain" placeholder="app.example.com"></div>
+        <div class="rc-field"><label>负责人</label><select class="rc-inp" id="em_owner"></select></div>
+      </div>
+      <div class="rc-form2">
+        <div class="rc-field"><label>项目</label><select class="rc-inp" id="em_proj"></select></div>
+        <div class="rc-field"><label>机器类型</label><input class="rc-inp" id="em_type" placeholder="宿主机 / 容器 / 中间件"></div>
+      </div>
+      <div class="rc-form2">
+        <div class="rc-field"><label>登录账号</label><input class="rc-inp" id="em_account" placeholder="root"></div>
+        <div class="rc-field"><label>登录密码</label>
+          <div class="rc-inp-wrap">
+            <input class="rc-inp" id="em_password" type="password" placeholder="留空则不修改">
+            <button class="rc-inp-eye" id="em_pw_eye" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="3"/></svg></button>
+          </div>
+        </div>
+      </div>
+      <div class="rc-field"><label>状态</label>
+        <select class="rc-inp" id="em_status">
+          <option value="online">在线</option>
+          <option value="offline">离线</option>
+          <option value="maintenance">维护中</option>
+        </select>
+      </div>
+    </div>
+    <div class="rc-modal-foot">
+      <button class="rc-btn" data-closemodal="1">取消</button>
+      <button class="rc-btn rc-btn-p" id="em_save">保存</button>
+    </div>
+  </div>
+</div>
+
+<div id="rcLayer"></div>
+
+<div class="rc-modal" id="rcImportModal" style="display:none">
+  <div class="rc-modal-mask" data-closeimport="1"></div>
+  <div class="rc-modal-box" style="width:540px">
+    <div class="rc-modal-head">批量导入资源<span class="rc-modal-x" data-closeimport="1">×</span></div>
+    <div class="rc-modal-body">
+      <div class="rc-import-hint">每行一条资源，字段用<b>逗号</b>或<b>Tab</b>分隔（可直接粘贴 Excel 复制的单元格），顺序：<br><code>名称, 本机IP, 项目, 负责人, 账号, 密码, 父级物理机IP</code><br><span class="rc-muted">父级物理机IP 可留空：留空时本机IP即宿主机IP；填写后本机IP为虚拟机IP、父级物理机IP为宿主机IP</span></div>
+      <textarea class="rc-import-ta" id="im_ta" placeholder="web-01, 192.168.1.10, 核心交易, 张伟, root, abc123, 192.168.1.5&#10;db-01, 192.168.1.11, 核心交易, 李静, root, xyz789,"></textarea>
+      <div style="display:flex;align-items:center;gap:10px">
+        <label class="rc-btn-ghost" style="cursor:pointer">选择 CSV 文件<input type="file" id="im_file" accept=".csv,.txt" style="display:none"></label>
+        <span class="rc-muted" id="im_file_name">未选择文件</span>
+      </div>
+      <div class="rc-import-result" id="im_result"></div>
+    </div>
+    <div class="rc-modal-foot">
+      <button class="rc-btn" data-closeimport="1">取消</button>
+      <button class="rc-btn rc-btn-p" id="im_go">开始导入</button>
+    </div>
+  </div>
+</div>
+
+<div class="rc-modal" id="rcAddModal" style="display:none">
+  <div class="rc-modal-mask" data-closeadd="1"></div>
+  <div class="rc-modal-box" style="width:420px">
+    <div class="rc-modal-head" id="rcAddHead">添加<span class="rc-modal-x" data-closeadd="1">×</span></div>
+    <div class="rc-modal-body" id="rcAddBody"></div>
+    <div class="rc-modal-foot">
+      <button class="rc-btn" data-closeadd="1">取消</button>
+      <button class="rc-btn rc-btn-p" id="rcAddSave">保存</button>
+    </div>
+  </div>
+</div>
+</div>
+
+<script>
+(function(){
+var TOKEN=localStorage.getItem('token')||'',API='/api/resource-cmdb',OPTS=null,RES=[],MACHINES=[],PHY=[],ALL_RES=[],CABINETS=[];
+var ME={username:localStorage.getItem('username')||'',role:'',permissions:[],_meLoaded:false};
+function isAdmin(){return ME.role==='admin';}
+var _tab='overview',_editId=null,_q='',_projFilter='',_ownerFilter='',_statusFilter='',_phyFilter='',_groupByProj=false,_hideOffline=false;
+
+function esc(v){return String(v||'').replace(/[&<>"']/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]})}
+function val(id){return (document.getElementById(id)||{}).value||''}
+function setField(id,v){var el=document.getElementById(id);if(el)el.value=v||''}
+function toast(msg,type){var t=document.getElementById('toast');t.textContent=msg;t.style.borderLeft='3px solid '+(type==='err'?'var(--r600)':type==='warn'?'var(--a600)':'var(--g600)');t.classList.add('show');setTimeout(function(){t.classList.remove('show')},2200)}
+function req(url,opts){opts=opts||{};return fetch(url,{method:opts.method||'GET',headers:Object.assign({'Content-Type':'application/json'},TOKEN?{Authorization:'Bearer '+TOKEN}:{}),body:opts.body?JSON.stringify(opts.body):undefined}).then(function(r){return r.json().then(function(d){if(!r.ok)throw new Error(d.detail||d.message||'请求失败');return d})})}
+function load(){
+  return Promise.all([
+    req(API+'/options'),
+    req(API+'/resources').catch(function(){return []}),
+    req('/api/machines/').catch(function(){return []}),
+    req(API+'/cabinets').catch(function(){return []})
+  ]).then(function(rs){
+    OPTS=rs[0].data||{};
+    ALL_RES=rs[1]||[];
+    RES=ALL_RES.filter(function(r){ return r.category!=='physical'; });   // 资源台账：仅虚拟机
+    PHY=ALL_RES.filter(function(r){ return r.category==='physical'; });     // 物理机管理：仅物理机
+    MACHINES=rs[2]||[];
+    CABINETS=rs[3]||[];
+    // 取当前登录用户角色（用于详情页/操作按钮的 admin 判定，与硬件台账一致）
+    return req('/api/auth/me').then(function(u){ if(u){ if(u.role)ME.role=u.role; if(u.username)ME.username=u.username; if(u.permissions)ME.permissions=u.permissions; ME._meLoaded=true; } }).catch(function(){});
+  }).catch(function(e){toast(e.message,'err')})
+}
+function save(obj,cb){req(API+'/options',{method:'PUT',body:obj}).then(function(){load().then(function(){toast('已保存','ok');if(cb)cb()})}).catch(function(e){toast(e.message,'err')})}
+
+function svg(d){return'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">'+d+'</svg>'}
+var IC={
+  grid:'<rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/>',
+  db:'<ellipse cx="12" cy="5" rx="8" ry="3"/><path d="M4 5v14c0 1.66 3.58 3 8 3s8-1.34 8-3V5"/><path d="M4 12c0 1.66 3.58 3 8 3s8-1.34 8-3"/>',
+  link:'<path d="M10 13a5 5 0 0 0 7.07 0l3-3a5 5 0 0 0-7.07-7.07l-1.5 1.5"/><path d="M14 11a5 5 0 0 0-7.07 0l-3 3a5 5 0 0 0 7.07 7.07l1.5-1.5"/>',
+  folder:'<path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>',
+  user:'<circle cx="12" cy="7" r="4"/><path d="M5 21v-2a7 7 0 0 1 14 0v2"/>',
+  chip:'<rect x="5" y="5" width="14" height="14" rx="2"/><path d="M9 1v3M15 1v3M9 20v3M15 20v3M1 9h3M1 15h3M20 9h3M20 15h3"/>',
+  search:'<circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/>',
+  host:'<rect x="2" y="3" width="20" height="8" rx="2"/><rect x="2" y="13" width="20" height="8" rx="2"/>',
+  eye:'<path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="3"/>',
+  eyeOff:'<path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/>',
+  building:'<rect x="4" y="2.5" width="16" height="19" rx="2"/><path d="M9 7h.01M15 7h.01M9 11h.01M15 11h.01M9 15h.01M15 15h.01"/><path d="M10 21.5v-3h4v3"/>'
+};
+
+function sect(k){
+  return {
+    overview:{label:'资源总览',icon:IC.grid,color:'var(--navy-800)',bg:'var(--navy-100)'},
+    resources:{label:'资源台账',icon:IC.db,color:'var(--navy-800)',bg:'var(--navy-100)'},
+    pve:{label:'机房管理',icon:IC.building,color:'var(--g600)',bg:'var(--g100)'},
+    physical:{label:'硬件台账',icon:IC.host,color:'var(--g600)',bg:'var(--g100)'},
+    proj:{label:'项目管理',icon:IC.folder,color:'var(--a600)',bg:'var(--a100)'},
+    owner:{label:'负责人',icon:IC.user,color:'var(--r600)',bg:'var(--r100)'}
+  }[k];
+}
+
+// 机房数量 = 机柜表中去重后的 room_name（与「机房机柜」页一致，而非旧的 pve_location 旧位置串）
+function roomCount(){
+  var set={};(CABINETS||[]).forEach(function(c){ if(c&&c.room_name) set[c.room_name]=1; });return Object.keys(set).length;
+}
+function cnts(){
+  if(!OPTS)return{};
+  var p=(OPTS.bindings||{}).pve_location||[];
+  var excl=OPTS.machine_exclude||[];
+  var imported={};
+  RES.forEach(function(r){ if(r.machine_id!=null) imported[r.machine_id]=true; });
+  var machN=0;
+  MACHINES.forEach(function(mc){ if(excl.indexOf(mc.id)<0 && !imported[mc.id]) machN++; });
+  return{resources:RES.length+machN,cabinets:roomCount(),physical:PHY.length,proj:(OPTS.projects||[]).length,owner:(OPTS.owners||[]).length,type:(OPTS.machine_types||[]).length}
+}
+// 某项目/负责人/类型下的资源数
+function resCount(field,val){
+  return RES.filter(function(r){
+    if(field==='proj')return (r.projects||[]).indexOf(val)>=0;
+    return r[field]===val;
+  }).length;
+}
+// 某项目/负责人关联的资源列表（名称 + IP）
+function resList(field,val){
+  return RES.filter(function(r){
+    if(field==='proj')return (r.projects||[]).indexOf(val)>=0;
+    return r.owner===val;
+  }).map(function(r){return{name:r.name,ip:r.pve_ip||r.vm_ip||''}});
+}
+function statusCount(st){return RES.filter(function(r){return r.status===st}).length}
+
+/* 内容级权限兜底（2026-09-07 资源管理权限拆分）：非 admin 未被授予该子模块权限时拦截，
+   防止资源总览卡片 [data-tab] / 内部跳转（查看资源等）绕过侧栏网关 */
+var RC_PERM_TABS=['overview','resources','proj','owner'];
+function rcFirstAllowed(){for(var i=0;i<RC_PERM_TABS.length;i++){if(ME.permissions.indexOf(RC_PERM_TABS[i])>=0)return RC_PERM_TABS[i]}return ''}
+function go(k){
+  if(!ME._meLoaded){ window.__RC_TAB__=k;_tab=k;return; } /* load()未完成：只记录目标 tab，等 load 完成后 init 统一渲染（防空数据渲染崩溃） */
+  else if(!isAdmin() && RC_PERM_TABS.indexOf(k)>=0 && ME.permissions.indexOf(k)<0){
+    if(RC_PERM_TABS.indexOf(_tab)>=0 && ME.permissions.indexOf(_tab)>=0) return; /* 已在有权 tab 内：原地停留 */
+    var fb=rcFirstAllowed();
+    if(fb){k=fb}
+    else{
+      var m=document.getElementById('rcMain');
+      if(m)m.innerHTML='<div style="padding:48px 20px;text-align:center;color:var(--n400);font-size:13px">暂无资源管理访问权限，请联系管理员开通</div>';
+      if(window.__RC_SET_ACTIVE__)window.__RC_SET_ACTIVE__('__none__');
+      return;
+    }
+  }
+  _tab=k;render();if(window.__RC_SET_ACTIVE__)window.__RC_SET_ACTIVE__(k)}
+window.__RC_GOTO__=go;
+
+// 各子目录头部标题与描述（替代原固定的“资源管理 / 统一管理机房、项目与负责人”）
+var TAB_META = {
+  overview:{title:'资源总览', desc:'资源资产总览与快速检索'},
+  resources:{title:'资源台账', desc:'虚拟机资产台账 · 负责人归属、项目与到期跟踪'},
+  proj:{title:'项目管理', desc:'按项目归集资源 · 便于成本与权限划分'},
+  owner:{title:'负责人', desc:'按负责人归集资源 · 责任到人、快速定位'},
+  pve:{title:'机房管理', desc:'机房、机柜与设备上架管理'}
+};
+function updateHead(){
+  var m = TAB_META[_tab] || {title:'资源管理', desc:'统一管理机房、项目与负责人'};
+  var h = document.getElementById('rcHeadTitle'); if(h) h.textContent = m.title;
+  var s = document.getElementById('rcHeadSub'); if(s) s.textContent = m.desc;
+}
+
+function render(){
+  var m=document.getElementById('rcMain');
+  if(!m) return; /* 页面已切换/卸载，异步回调落空时直接跳过 */
+  updateHead();
+  m.innerHTML='<div id="rcStats"></div><div id="rcToolbar"></div><div id="rcBody"></div>';
+  renderToolbar();
+  renderResStats();
+  renderBody();
+}
+// 工具栏（含搜索框）——与内容分离，搜索时不被重建，避免输入法/光标错乱
+function renderToolbar(){
+  var t=document.getElementById('rcToolbar');if(!t)return;
+  if(_tab==='overview'){t.innerHTML='';return}
+  var qv='value="'+esc(_q)+'"';
+  if(_tab==='resources'){
+    var pf=(OPTS&&OPTS.projects)||[],of=(OPTS&&OPTS.owners)||[];
+    var pfOpts='<option value="">全部项目</option>'
+      +pf.map(function(p){return'<option value="'+esc(p)+'"'+(_projFilter===p?' selected':'')+'>'+esc(p)+'</option>'}).join('')
+      +'<option value="__none__"'+(_projFilter==='__none__'?' selected':'')+'>未分组</option>';
+    var ofOpts='<option value="">全部负责人</option>'
+      +of.map(function(o){return'<option value="'+esc(o)+'"'+(_ownerFilter===o?' selected':'')+'>'+esc(o)+'</option>'}).join('')
+      +'<option value="__none__"'+(_ownerFilter==='__none__'?' selected':'')+'>未指定</option>';
+    var stOpts='<option value="">全部状态</option>'
+      +'<option value="online"'+(_statusFilter==='online'?' selected':'')+'>在线</option>'
+      +'<option value="maintenance"'+(_statusFilter==='maintenance'?' selected':'')+'>维护中</option>'
+      +'<option value="offline"'+(_statusFilter==='offline'?' selected':'')+'>离线</option>';
+    var phySel=(PHY||[]).filter(function(p){return (p.machine_type||'')==='服务器 / 物理机';});
+    var phyOpts='<option value="">全部物理机</option>'
+      +phySel.map(function(p){return'<option value="'+esc(p.name)+'"'+(_phyFilter===p.name?' selected':'')+'>'+esc(p.name||p.pve_ip||'?')+'</option>'}).join('')
+      +'<option value="__none__"'+(_phyFilter==='__none__'?' selected':'')+'>未关联</option>';
+    t.innerHTML='<div class="rc-toolbar"><span class="title" id="rcTitle">资源台账</span>'
+      +'<div class="actions">'
+      +'<input class="rc-inp" id="rc-q" placeholder="搜索名称 / IP / 物理机 / 项目 / 负责人" style="width:220px;flex:none" '+qv+'>'
+      +'<select class="rc-inp" id="rc-proj-filter" style="width:105px;flex:none" title="按项目筛选">'+pfOpts+'</select>'
+      +'<select class="rc-inp" id="rc-owner-filter" style="width:105px;flex:none" title="按负责人筛选">'+ofOpts+'</select>'
+      +'<select class="rc-inp" id="rc-status-filter" style="width:100px;flex:none" title="按状态筛选">'+stOpts+'</select>'
+      +'<select class="rc-inp" id="rc-phy-filter" style="width:130px;flex:none" title="按所属物理机分类">'+phyOpts+'</select>'
+      +'<button class="rc-btn-ghost" id="btn-export">导出 CSV</button>'
+      +'<button class="rc-btn-ghost" id="btn-import-tpl">下载模板</button>'
+      +(isAdmin()?'<button class="rc-btn-ghost" id="btn-import">批量导入</button><button class="rc-btn rc-btn-p" id="btn-new">新增资源</button>':'')
+      +'</div></div>';
+    return;
+  }
+  if(_tab==='pve'){
+    t.innerHTML='<div class="rc-toolbar"><span class="title" id="rcTitle">机房管理</span>'
+      +'<div class="actions">'
+      +'<input class="rc-inp" id="rc-q" placeholder="搜索机房 / 主机 IP" style="width:200px;flex:none" '+qv+'>'
+      +'<button class="rc-btn rc-btn-p" data-addpve="1">添加</button>'
+      +'</div></div>';
+    return;
+  }
+  var c=_tab==='proj'?'项目':'负责人';
+  t.innerHTML='<div class="rc-toolbar"><span class="title" id="rcTitle">'+c+'管理</span>'
+    +'<div class="actions">'
+    +'<input class="rc-inp" id="rc-q" placeholder="搜索'+c+'" style="width:200px;flex:none" '+qv+'>'
+    +(isAdmin()?'<button class="rc-btn rc-btn-p" data-addtag="'+_tab+'">添加</button>':'')
+    +'</div></div>';
+}
+// 内容区（统计卡 + 列表/表格/卡片）——搜索时只刷新这里
+function renderBody(){
+  var b=document.getElementById('rcBody');if(!b)return;
+  b.innerHTML='';
+  if(_tab==='overview')renderOverview(b);
+  else if(_tab==='resources')renderRes(b);
+  else if(_tab==='pve')renderPve(b);
+  else renderTags(b,_tab);
+}
+
+/* ============ 统一统计卡片（四个 tab 共用，观感与「硬件台账」一致） ============
+   卡片定义：{k:标签, v:显示值, num:count-up 目标数字(纯数字)或 null, ico:SVG path 数据,
+             bar:左侧色条/图标颜色(CSS 变量), x:副说明(允许内联 HTML，调用方自行 esc), jump:可选跳转 tab} */
+function rcPrefersReducedMotion(){
+  return !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+}
+function renderStatCards(list){
+  var cards=(list||[]).map(function(c,i){
+    var bar=c.bar||'var(--n300)';
+    var hasNum=(c.num!=null && c.num!=='' && !isNaN(parseInt(c.num,10)));
+    var vTxt=(c.v==null)?'—':String(c.v);   /* 注意：0 必须正常显示，不能走 esc() 的 ||'' 兜底 */
+    return '<div class="rc-stat"'
+      + (hasNum?' data-cnt="'+parseInt(c.num,10)+'"':'')
+      + (c.jump?' data-jump="'+esc(c.jump)+'" title="点击进入"':'')
+      + ' style="--bar:'+bar+';--i:'+i+'">'
+      + '<span class="rc-stat-ico" style="color:'+bar+'">'+svg(c.ico||'')+'</span>'
+      + '<div class="rc-stat-k">'+esc(String(c.k==null?'':c.k))+'</div>'
+      + '<div class="rc-stat-v">'+esc(vTxt)+'</div>'
+      + '<div class="rc-stat-x">'+(c.x||'')+'</div>'
+      + '</div>';
+  }).join('');
+  return '<div class="rc-stats">'+cards+'</div>';
+}
+/* 数字滚动：仅作用于带 data-cnt 的纯数字卡；650ms 三次缓出。重新渲染（innerHTML 重建）后自动重放 */
+function animateStats(root){
+  var scope=root||document;
+  var els=scope.querySelectorAll('.rc-stat[data-cnt]');
+  if(!els || !els.length) return;
+  var reduced=rcPrefersReducedMotion();
+  Array.prototype.forEach.call(els,function(el){
+    var target=parseInt(el.getAttribute('data-cnt'),10);
+    var vEl=el.querySelector('.rc-stat-v');
+    if(isNaN(target)||!vEl) return;
+    if(reduced){ vEl.textContent=target; return; }
+    var start=null,dur=650;
+    function step(ts){
+      if(start==null) start=ts;
+      var p=Math.min((ts-start)/dur,1);
+      vEl.textContent=Math.round(target*(1-Math.pow(1-p,3)));
+      if(p<1) requestAnimationFrame(step); else vEl.textContent=target;
+    }
+    requestAnimationFrame(step);
+  });
+}
+
+/* ============ 总览 ============ */
+function isOn(st){return st===1||st===true||st==='online'}
+function renderOverview(m){
+  /* 口径（2026-09-04 核准）：资源台账=RES(非物理)；硬件台账=PHY；监控机器=MACHINES(PVE侧,独立维度)。
+     「已录入台账」= machine_id 被台账(资源或硬件)任一关联(去重)；设备在线一律用 MACHINES.online_status(监控口径)。 */
+  var c=cnts(),rc=roomCount();
+  var excl=((OPTS&&OPTS.machine_exclude)||[]),linked={};
+  RES.forEach(function(r){ if(r.machine_id!=null) linked[r.machine_id]=1; });
+  PHY.forEach(function(r){ if(r.machine_id!=null) linked[r.machine_id]=1; });
+  var mUnlinked=0;
+  (MACHINES||[]).forEach(function(mc){
+    if(excl.indexOf(mc.id)<0 && !linked[mc.id]) mUnlinked++;
+  });
+  var machTot=(MACHINES||[]).length;
+  var offMach=(MACHINES||[]).filter(function(x){return !isOn(x.online_status)});
+  var machOn=machTot-offMach.length, machOff=offMach.length;
+  var tplOff=offMach.filter(function(x){return /template|模板/i.test(x.name||'')}).length;
+  var resOn=RES.filter(function(r){return isOn(r.status)}).length, resTot=RES.length;
+  var resPct=resTot?Math.round(resOn*100/resTot):0;
+  // 机柜上架：硬件(PHY) 口径
+  var phyPlaced=PHY.filter(function(r){return r.cabinet_id}).length, phyUnplaced=PHY.length-phyPlaced;
+  var offRes=RES.filter(function(r){return !isOn(r.status)});
+  var pm={},maxP='—',maxPn=0;
+  RES.forEach(function(r){(r.projects||[]).forEach(function(p){if(p){pm[p]=(pm[p]||0)+1}})});
+  Object.keys(pm).forEach(function(k){if(pm[k]>maxPn){maxPn=pm[k];maxP=k}});
+  var upPct=PHY.length?Math.round(phyPlaced*100/PHY.length):0;
+  var typeCnt=function(t){return PHY.filter(function(p){return p.machine_type===t}).length};
+  var cabN=(CABINETS||[]).length;
+  var stats=[
+    {k:'资源台账',v:resTot,num:resTot,ico:IC.db,bar:'var(--navy-800)',jump:'resources',
+     x:'<span class="on">在线 '+resOn+'</span> · <span class="'+(resTot-resOn>0?'off':'')+'">离线 '+(resTot-resOn)+'</span> · 在线率 '+resPct+'%'},
+    {k:'硬件台账',v:PHY.length,num:PHY.length,ico:IC.host,bar:'var(--g600)',jump:'physical',
+     x:'服务器 '+typeCnt('服务器 / 物理机')+' · 网络设备 '+typeCnt('网络设备')+' · 存储 '+typeCnt('存储')},
+    {k:'机房机柜',v:rc,num:rc,ico:IC.building,bar:'var(--g600)',jump:'cabinets',
+     x:cabN+' 个机柜 · 已上架 '+phyPlaced+'/'+PHY.length+(phyUnplaced>0?' · <span class="warn">未上架 '+phyUnplaced+'</span>':' · 上架率 '+upPct+'%')},
+    {k:'项目 · 负责人',v:c.proj,num:c.proj,ico:IC.folder,bar:'var(--a600)',jump:'proj',
+     x:c.owner+' 位负责人 · 最大项目 '+esc(maxP)+(maxPn>0?('（'+maxPn+' 台）'):'')}
+  ];
+  m.innerHTML=renderStatCards(stats)
+  +(function(){
+    var chips='';
+    if(mUnlinked>0) chips+='<span class="chip" data-jump="resources"><b>'+mUnlinked+'</b> 台监控机器未录入台账 → 去导入</span>';
+    if(machOff>0) chips+='<span class="chip" data-jump="monitor"><b>'+machOff+'</b> 台监控设备离线'+(tplOff>0?('（'+tplOff+' 台为模板机）'):'')+' → 查看</span>';
+    if(offRes.length>0) chips+='<span class="chip" data-jump="resources"><b>'+offRes.length+'</b> 台资源离线：'+esc(offRes.slice(0,2).map(function(r){return r.name}).join('、'))+(offRes.length>2?' 等':'')+' → 查看</span>';
+    if(!chips) return '<div class="rc-checkup"><span class="okchip">✓ 数据健康 · 无待处理事项</span></div>';
+    return '<div class="rc-checkup"><span class="t">数据体检</span>'+chips+'</div>';
+  })()
+  +(function(){
+    /* ── 硬件类型分布（PHY 口径）── */
+    var td={};PHY.forEach(function(p){var k=p.machine_type||'未分类';td[k]=(td[k]||0)+1});
+    var tc={'服务器 / 物理机':'var(--navy-700)','网络设备':'var(--accent)','存储':'var(--a600)','未分类':'var(--r600)'};
+    var tks=Object.keys(td).sort(function(a,b){return td[b]-td[a]});
+    var trows=tks.map(function(k){
+      var w=PHY.length?Math.max(Math.round(td[k]*100/PHY.length),2):0;
+      return'<div class="ov-bar"><span class="nm" title="'+esc(k)+'">'+esc(k)+'</span><div class="trk"><i style="width:'+w+'%;background:'+(tc[k]||'var(--accent)')+'"></i></div><span class="v">'+td[k]+'</span></div>';
+    }).join('');
+    /* ── 在线状态双环（监控口径 / 台账口径 分开，不混算）── */
+    function ring(on,tot,color){
+      var r=42,cc=2*Math.PI*r,p=tot?on/tot:0;
+      return'<div class="dg"><svg width="104" height="104" viewBox="0 0 104 104">'
+        +'<circle cx="52" cy="52" r="'+r+'" fill="none" stroke="var(--n200)" stroke-width="10"/>'
+        +'<circle cx="52" cy="52" r="'+r+'" fill="none" stroke="'+color+'" stroke-width="10" stroke-linecap="round" stroke-dasharray="'+(cc*p).toFixed(1)+' '+cc.toFixed(1)+'"/></svg>'
+        +'<div class="ctr"><b>'+(tot?Math.round(p*100):0)+'%</b><span>'+on+'/'+tot+' 在线</span></div></div>';
+    }
+    /* ── 机房机柜概览（CABINETS 房间/机柜 + PHY 已上架设备按房间聚合）── */
+    var cabById={};(CABINETS||[]).forEach(function(cb){cabById[cb.id]=cb});
+    var rooms={};(CABINETS||[]).forEach(function(cb){var rn=cb.room_name||'—';rooms[rn]=rooms[rn]||{cabs:0,devs:0};rooms[rn].cabs++});
+    PHY.forEach(function(p){ if(p.cabinet_id&&cabById[p.cabinet_id]){var rn=cabById[p.cabinet_id].room_name||'—';rooms[rn]=rooms[rn]||{cabs:0,devs:0};rooms[rn].devs++;} });
+    var rks=Object.keys(rooms).sort(function(a,b){return rooms[b].cabs-rooms[a].cabs});
+    var rrows=rks.map(function(rn){
+      var rm=rooms[rn],icons='';
+      for(var i=0;i<rm.cabs;i++)icons+='<i class="cb"></i>';
+      return'<div class="ov-room"><span class="nm" title="'+esc(rn)+'">'+esc(rn)+'</span><div class="cabs">'+icons+'</div><span class="mt"><b>'+rm.cabs+'</b> 机柜 · <b>'+rm.devs+'</b> 台设备</span></div>';
+    }).join('');
+    return'<div class="ov3">'
+      +'<div class="ov-card"><h3>硬件类型分布 <span class="more" data-jump="physical">查看台账 →</span></h3>'+trows+'<div style="margin-top:10px;font-size:12px;color:var(--n500)">硬件台账共 '+PHY.length+' 台'+(phyUnplaced>0?(' · 未上架 '+phyUnplaced):' · 全部已上架')+'</div></div>'
+      +'<div class="ov-card"><h3>在线状态</h3><div class="ov-rings">'
+        +'<div class="ov-ring">'+ring(machOn,machTot,'var(--g600)')+'<span class="cap">监控设备<b> '+machOn+'/'+machTot+'</b></span></div>'
+        +'<div class="ov-ring">'+ring(resOn,resTot,'var(--navy-700)')+'<span class="cap">台账资源<b> '+resOn+'/'+resTot+'</b></span></div>'
+      +'</div><div style="margin-top:10px;font-size:12px;color:var(--n500)">监控口径 = PVE 受控机器 · 台账口径 = 资源台账 status</div></div>'
+      +'<div class="ov-card"><h3>机房机柜概览 <span class="more" data-jump="cabinets">进入机房机柜 →</span></h3>'+rrows
+        +'<div style="margin-top:10px;font-size:12px;color:var(--n500)">'+rks.length+' 个机房 · '+(CABINETS||[]).length+' 机柜 · 已上架 '+phyPlaced+' 台</div></div>'
+      +'</div>';
+  })();
+  animateStats(m);
+}
+function rcard(k,title,count,desc){
+  var s=sect(k);
+  return'<div class="rc-card" data-jump="'+k+'">'
+    +'<div class="hd"><span class="ico" style="background:'+s.bg+';color:'+s.color+'">'+svg(s.icon)+'</span><h3>'+title+'</h3><span class="num">'+count+'</span></div>'
+    +'<div class="desc">'+desc+'</div>'
+    +'<span class="go">进入管理</span></div>';
+}
+
+/* 密码掩码单元格（默认隐藏，点击眼睛切换；固定宽度避免布局跳动） */
+function pwCell(pw){
+  if(!pw) return '<span class="rc-muted">—</span>';
+  return '<span class="pw-cell"><span class="pw-val">••••••</span>'
+    +'<button class="pw-eye" data-pw="'+esc(pw)+'" title="显示/隐藏密码">'+svg(IC.eye)+'</button></span>';
+}
+function statusBadge(st){
+  return st==='online'?'<span class="badge b-on"><span class="dot"></span>在线</span>'
+    :st==='maintenance'?'<span class="badge b-mt"><span class="dot"></span>维护</span>'
+    :st==='offline'?'<span class="badge b-off"><span class="dot"></span>离线</span>'
+    :'<span class="badge b-off"><span class="dot"></span>'+esc(st||'未知')+'</span>';
+}
+
+/* ============ 资源台账（资源记录 + 监控中心机器合并） ============ */
+function computeResRows(){
+  var phyByIp = {}, phyLocByIp = {};
+  (PHY||[]).forEach(function(p){ if(p.pve_ip){ phyByIp[p.pve_ip] = p.name; phyLocByIp[p.pve_ip] = p.location||''; } });
+  // IP 列 = 机器自身 IP：虚拟机显示 vm_ip（而非父级物理机的 pve_ip）；无 vm_ip 的（物理机）显示 pve_ip
+  var rows = RES.map(function(r){return{kind:'res',name:r.name,ip:r.vm_ip||r.pve_ip,phyName:phyByIp[r.pve_ip]||'',phyLoc:phyLocByIp[r.pve_ip]||'',proj:(r.projects||[])[0]||'',owner:r.owner,status:r.status,account:r.account,pw:r.password,id:r.id};});
+  var q=_q.toLowerCase();
+  if(q){
+    rows=rows.filter(function(r){
+      return (r.name||'').toLowerCase().indexOf(q)>=0
+        || (r.ip||'').toLowerCase().indexOf(q)>=0
+        || (r.phyName||'').toLowerCase().indexOf(q)>=0
+        || (r.proj||'').toLowerCase().indexOf(q)>=0
+        || (r.owner||'').toLowerCase().indexOf(q)>=0
+        || (r.account||'').toLowerCase().indexOf(q)>=0;
+    });
+  }
+  if(_projFilter){
+    if(_projFilter==='__none__') rows=rows.filter(function(r){return !r.proj});
+    else rows=rows.filter(function(r){return r.proj===_projFilter});
+  }
+  if(_ownerFilter){
+    if(_ownerFilter==='__none__') rows=rows.filter(function(r){return !r.owner});
+    else rows=rows.filter(function(r){return r.owner===_ownerFilter});
+  }
+  if(_statusFilter) rows=rows.filter(function(r){return r.status===_statusFilter});
+  if(_phyFilter){
+    if(_phyFilter==='__none__') rows=rows.filter(function(r){return !r.phyName});
+    else rows=rows.filter(function(r){return r.phyName===_phyFilter});
+  }
+  if(_hideOffline && _statusFilter!=='offline') rows=rows.filter(function(r){return r.status!=='offline'});
+  return rows;
+}
+function renderResStats(){
+  var s=document.getElementById('rcStats'); if(!s) return;
+  // 项目 / 负责人：统计条（项目 N 个 / 覆盖资源 X 台 / 未分组 Y 台）
+  if(_tab==='proj'||_tab==='owner'){
+    var isProj=(_tab==='proj');
+    var items=isProj?(OPTS.projects||[]):(OPTS.owners||[]);
+    var covered=0;
+    RES.forEach(function(r){
+      var hit=isProj?((r.projects||[]).length>0):!!r.owner;
+      if(hit)covered++;
+    });
+    var unlinked=RES.length-covered;
+    var bar1=isProj?'var(--a600)':'var(--r600)';
+    var icoN=isProj?IC.folder:IC.user;
+    var covPct=RES.length?Math.round(covered*100/RES.length):0;
+    s.innerHTML=renderStatCards([
+      {k:isProj?'项目':'负责人', v:items.length, num:items.length, ico:icoN, bar:bar1,
+       x:isProj?'已配置的项目标签':'已配置的负责人'},
+      {k:isProj?'覆盖资源':'已指派', v:covered, num:covered, ico:IC.db, bar:'var(--navy-800)',
+       x:'占资源台账 '+covPct+'%'},
+      {k:isProj?'未分组':'未指定', v:unlinked, num:unlinked, ico:IC.host, bar:'var(--n500)',
+       x:unlinked>0?'待归类 / 待指派':'全部已归类'}
+    ]);
+    animateStats(s);
+    return;
+  }
+  if(_tab!=='resources'){ s.innerHTML=''; return; }
+  // 卡片随全量数据计算（不随搜索过滤变化），与「硬件台账」展示页一致
+  var on=0, off=0, mt=0;
+  RES.forEach(function(r){
+    if(r.status==='online')on++;
+    else if(r.status==='offline')off++;
+    else if(r.status==='maintenance')mt++;
+  });
+  var onPct=RES.length?Math.round(on*100/RES.length):0;
+  s.innerHTML=renderStatCards([
+    {k:'登记资源', v:RES.length, num:RES.length, ico:IC.db, bar:'var(--navy-800)', x:'台账在管资源'},
+    {k:'在线', v:on, num:on, ico:IC.host, bar:'var(--g600)', x:'运行中 · 在线率 '+onPct+'%'},
+    {k:'离线 / 维护', v:off+' / '+mt, num:null, ico:IC.host, bar:'var(--n500)', x:'需关注'}
+  ]);
+  animateStats(s);
+}
+function renderRes(m){
+  var rows = computeResRows();
+  var q=(_q||'').toLowerCase();
+  var title=document.getElementById('rcTitle');
+  if(title)title.textContent='资源台账';
+  if(rows.length){
+    var thead='<thead><tr><th>名称</th><th>IP</th><th>所属物理机</th><th>项目</th><th>负责人</th><th>状态</th><th>账号</th><th>密码</th><th style="width:130px">操作</th></tr></thead>';
+    var rowHtml=function(row){
+      var op = row.kind==='res'
+        ? '<button class="rc-op" data-view="'+row.id+'" data-vkind="res">详情</button>'+(isAdmin()?'<button class="rc-op" data-editres="'+row.id+'">编辑</button>':'')
+        : '<button class="rc-op" data-view="'+row.mid+'" data-vkind="mach">详情</button>'+(isAdmin()?'<button class="rc-op" data-editmach="'+row.mid+'">编辑</button>':'');
+      return'<tr><td style="font-weight:600">'+esc(row.name)+'</td><td class="mono">'+esc(row.ip||'—')+'</td><td>'+(row.phyName?esc(row.phyName):'<span class="muted">—</span>')+'</td><td>'+esc(row.proj||'—')+'</td><td>'+esc(row.owner||'—')+'</td><td>'+statusBadge(row.status)+'</td>'
+        +'<td class="mono">'+esc(row.account||'—')+'</td><td>'+pwCell(row.pw)+'</td>'
+        +'<td style="white-space:nowrap">'+op+'</td></tr>';
+    };
+    if(_groupByProj){
+      // 按项目分组：每个项目一个分组头
+      var groups={};
+      rows.forEach(function(r){var p=r.proj||'未分组';(groups[p]=groups[p]||[]).push(r)});
+      var keys=Object.keys(groups).sort(function(a,b){return a==='未分组'?1:(b==='未分组'?-1:a.localeCompare(b,'zh'))});
+      var html='<div class="rc-table"><table>'+thead+'<tbody>';
+      keys.forEach(function(k){
+        html+='<tr class="rc-group-head"><td colspan="9"><span class="gl">'+esc(k)+'</span><span class="gc">'+groups[k].length+' 台</span></td></tr>'
+          +groups[k].map(rowHtml).join('');
+      });
+      m.innerHTML+=html+'</tbody></table></div>';
+    }else{
+      m.innerHTML+='<div class="rc-table"><table>'+thead+'<tbody>'+rows.map(rowHtml).join('')+'</tbody></table></div>';
+    }
+  }else{
+    m.innerHTML+='<div class="rc-empty-box">'+(q?'未找到匹配的资源':'暂无资源记录')+'</div>';
+  }
+}
+
+/* ============ 资源台账：导出 CSV ============ */
+function exportResCsv(){
+  if(typeof RES==='undefined'||!RES.length){toast('暂无资源可导出');return}
+  var rows=computeResRows();
+  var headers=['名称','IP','所属物理机','所属机房机柜','项目','负责人','状态','账号'];
+  var statusZh=function(s){return s==='online'?'在线':s==='offline'?'离线':s==='maintenance'?'维护中':(s||'')};
+  var cell=function(v){v=v==null?'':String(v);return /[",\r\n]/.test(v)?'"'+v.replace(/"/g,'""')+'"':v};
+  var lines=[headers.map(cell).join(',')];
+  rows.forEach(function(r){
+    lines.push([r.name,r.ip,r.phyName,r.phyLoc,r.proj,r.owner,statusZh(r.status),r.account].map(cell).join(','));
+  });
+  var csv='\ufeff'+lines.join('\r\n');
+  var blob=new Blob([csv],{type:'text/csv;charset=utf-8'});
+  var url=URL.createObjectURL(blob);
+  var a=document.createElement('a');
+  var d=new Date(),p=function(n){return n<10?'0'+n:n};
+  a.href=url;a.download='资源台账-'+d.getFullYear()+p(d.getMonth()+1)+p(d.getDate())+'-'+p(d.getHours())+p(d.getMinutes())+'.csv';
+  document.body.appendChild(a);a.click();document.body.removeChild(a);
+  setTimeout(function(){URL.revokeObjectURL(url);},1000);
+  toast('已导出 '+rows.length+' 条资源');
+}
+
+/* ============ 机房管理 ============ */
+function renderPve(m){
+  var items=(OPTS.bindings||{}).pve_location||[];
+  // 按机房/位置分组
+  var byLoc={},locOrder=[];
+  items.forEach(function(b){
+    var l=b.location||'未指定机房';
+    if(!byLoc[l]){byLoc[l]=[];locOrder.push(l);}
+    byLoc[l].push(b.host);
+  });
+  var q=_q.toLowerCase();
+  if(q){
+    var newOrder=[];
+    locOrder.forEach(function(loc){
+      if(loc.toLowerCase().indexOf(q)>=0){newOrder.push(loc);return;}
+      var matched=byLoc[loc].filter(function(h){return h.toLowerCase().indexOf(q)>=0});
+      if(matched.length){byLoc[loc]=matched;newOrder.push(loc);}
+    });
+    locOrder=newOrder;
+  }
+  var hostTotal=0;locOrder.forEach(function(loc){hostTotal+=byLoc[loc].length});
+  var title=document.getElementById('rcTitle');
+  if(title)title.textContent='机房管理（'+locOrder.length+' 个机房 · '+hostTotal+' 台主机'+(q?'，共 '+items.length+' 条绑定':'')+'）';
+  if(!locOrder.length){
+    m.innerHTML+='<div class="rc-empty-box">'+(q?'未找到匹配的机房或主机':'暂无机房与主机绑定')+'</div>';
+    return;
+  }
+  m.innerHTML+='<div class="rc-room-grid">'+locOrder.map(function(loc){
+    var hosts=byLoc[loc];
+    return'<div class="rc-room">'
+      +'<div class="rc-room-head">'
+      +'<span class="ico">'+svg(IC.building)+'</span>'
+      +'<div class="info"><div class="name">'+esc(loc)+'</div><div class="meta">'+hosts.length+' 台主机</div></div>'
+      +'<button class="rm" data-delpve-loc="'+esc(loc)+'" title="删除整个机房">删除机房</button>'
+      +'</div>'
+      +'<div class="rc-room-body">'+hosts.map(function(h){
+        return'<span class="rc-host-chip"><span class="mono">'+esc(h)+'</span><button class="x" data-delpve-host="'+esc(h)+'" data-delpve-locval="'+esc(loc)+'" title="移除该主机">×</button></span>';
+      }).join('')+'</div>'
+      +'</div>';
+  }).join('')+'</div>';
+}
+
+/* ============ 项目 / 负责人 ============ */
+function renderTags(m,k){
+  var cfg={
+    proj:{arr:OPTS.projects||[],ph:'项目名称',unit:'个',icon:IC.folder,color:'var(--a600)',bg:'var(--a100)',label:'项目',emptyHint:'还没有项目，点击右上角"添加"创建'},
+    owner:{arr:OPTS.owners||[],ph:'负责人姓名',unit:'人',icon:IC.user,color:'var(--r600)',bg:'var(--r100)',label:'负责人',emptyHint:'还没有负责人，点击右上角"添加"创建'}
+  };
+  var c=cfg[k],all=c.arr;
+  var total=all.length;
+  if(_q) all=all.filter(function(it){return String(it).toLowerCase().indexOf(_q.toLowerCase())>=0});
+  var title=document.getElementById('rcTitle');
+  if(title)title.textContent=c.label+'管理（'+all.length+' '+c.unit+(_q?'，共 '+total+' 个':'')+'）';
+  if(!all.length){
+    m.innerHTML+='<div class="rc-empty-box"><div class="eb-ico">'+svg(c.icon)+'</div>'
+      +'<div class="eb-t">'+(_q?'未找到匹配的'+c.label:c.emptyHint)+'</div></div>';
+    return;
+  }
+  var fullArr=k==='proj'?(OPTS.projects||[]):(OPTS.owners||[]);
+  var isOwner=(k==='owner');
+  var avColors=['var(--navy-800)','var(--g600)','var(--a600)','var(--r600)','var(--n500)'];
+  m.innerHTML+='<div class="rc-tags-grid">'+all.map(function(it){
+    // 用全量数组的真实下标，保证搜索过滤后删除仍定位正确；头像轮换色也因此与搜索无关
+    var ix=fullArr.indexOf(it);
+    var n=resCount(k,it);
+    var list=resList(k,it);
+    var on=0,mt=0,off=0;
+    RES.forEach(function(r){
+      var hit=isOwner?(r.owner===it):((r.projects||[]).indexOf(it)>=0);
+      if(!hit)return;
+      if(r.status==='online')on++;
+      else if(r.status==='maintenance')mt++;
+      else off++;
+    });
+    var tot=on+mt+off;
+    // 状态分布堆叠条：在线(绿) / 维护(琥珀) / 离线(灰)
+    var seg='';
+    if(tot){
+      [[on,'var(--g600)'],[mt,'var(--a600)'],[off,'var(--n300)']].forEach(function(p){
+        if(p[0]>0)seg+='<i style="width:'+((p[0]*100/tot).toFixed(2))+'%;background:'+p[1]+'"></i>';
+      });
+    }
+    var stmeta=tot
+      ?'<span class="on">在线 '+on+'</span><span class="mt">维护 '+mt+'</span><span class="off">离线 '+off+'</span>'
+      :'<span>暂无关联资源</span>';
+    // 关联资源名 chips：最多 3 个，超出 +N
+    var chips=list.slice(0,3).map(function(r){
+      return'<span class="chip" title="'+esc(r.name)+'">'+esc(r.name)+'</span>';
+    }).join('');
+    if(list.length>3)chips+='<span class="chip more">+'+(list.length-3)+'</span>';
+    if(!list.length)chips='<span class="chip none">暂无关联资源</span>';
+    var left=isOwner
+      ?'<span class="avatar" style="background:'+avColors[ix%5]+'">'+esc((it||'?').charAt(0))+'</span>'
+      :'<span class="ico" style="background:'+c.bg+';color:'+c.color+'">'+svg(c.icon)+'</span>';
+    return'<div class="rc-tagcard">'
+      +'<div class="hd">'+left
+      +'<span class="nm" title="'+esc(it)+'">'+esc(it)+'</span>'
+      +'<span class="count rc-count'+(n?'':' rc-count-empty')+'" data-tip="'+k+'" data-tipval="'+esc(it)+'">'+n+'</span></div>'
+      +'<div class="stbar">'+seg+'</div>'
+      +'<div class="stmeta">'+stmeta+'</div>'
+      +'<div class="chips">'+chips+'</div>'
+      +'<div class="acts">'
+      +'<button class="act view" data-viewtag="'+k+'" data-viewval="'+esc(it)+'" title="在资源台账中查看">'+svg(IC.search)+'查看资源</button>'
+      +'<button class="act del" data-deltag="'+k+'" data-ix="'+ix+'">删除</button>'
+      +'</div></div>';
+  }).join('')+'</div>';
+}
+
+// 填充编辑弹窗的「负责人」「项目」下拉（选项来自 OPTS.owners / OPTS.projects）
+function fillSelectOptions(){
+  var ow=OPTS.owners||[];
+  var os=document.getElementById('em_owner');
+  if(os){
+    var curOwner=os.dataset.cur||'';
+    if(curOwner && ow.indexOf(curOwner)<0) ow=ow.concat([curOwner]);
+    os.innerHTML='<option value="">— 未指定 —</option>'+ow.map(function(o){return'<option value="'+esc(o)+'">'+esc(o)+'</option>'}).join('');
+    os.value=curOwner;
+  }
+  var pj=OPTS.projects||[];
+  var ps=document.getElementById('em_proj');
+  if(ps){
+    var curProj=ps.dataset.cur||'';
+    if(curProj && pj.indexOf(curProj)<0) pj=pj.concat([curProj]);
+    ps.innerHTML='<option value="">— 未指定 —</option>'+pj.map(function(p){return'<option value="'+esc(p)+'">'+esc(p)+'</option>'}).join('');
+    ps.value=curProj;
+  }
+}
+function fillPhySelect(curIp){
+  var sel=document.getElementById('em_pve');
+  if(!sel)return;
+  var html='<option value="">— 未关联 —</option>';
+  (PHY||[]).forEach(function(p){
+    var ip=p.pve_ip||''; if(!ip) return;
+    html+='<option value="'+esc(ip)+'">'+esc(p.name||ip)+' ('+esc(ip)+')</option>';
+  });
+  if(curIp && (PHY||[]).every(function(p){return (p.pve_ip||'')!==curIp})){
+    html+='<option value="'+esc(curIp)+'">'+esc(curIp)+'（未关联物理机）</option>';
+  }
+  sel.innerHTML=html;
+  sel.value=curIp||'';
+}
+// 打开编辑弹窗（按资源记录 id）
+function openEditRes(id){
+  var rr=null;
+  for(var i=0;i<RES.length;i++){if(String(RES[i].id)===String(id)){rr=RES[i];break}}
+  if(!rr){toast('资源不存在','err');return}
+  _editId=id;
+  document.getElementById('rcModalHead').textContent='编辑资源';
+  // 本机 IP = 该机器自身 IP：虚拟机取 vm_ip；物理机没有 vm_ip，其自身 IP 存在 pve_ip 里
+  // 父级物理机 = 仅当该机确实挂载在另一台物理机下（vm_ip 与 pve_ip 都存在且不相等）时才回填 pve_ip
+  var ownIp = rr.vm_ip || rr.pve_ip || '';
+  var parentIp = (rr.vm_ip && rr.pve_ip && rr.pve_ip !== rr.vm_ip) ? rr.pve_ip : '';
+  setField('em_name',rr.name);setField('em_vm',ownIp);fillPhySelect(parentIp);setField('em_domain',rr.domain);
+  setField('em_type',rr.machine_type);
+  setField('em_account',rr.account);setField('em_password',rr.password);
+  setField('em_status',rr.status||'online');
+  document.getElementById('em_owner').dataset.cur=rr.owner||'';
+  document.getElementById('em_proj').dataset.cur=(rr.projects||[])[0]||'';
+  fillSelectOptions();
+  document.getElementById('rcModal').style.display='flex';
+}
+// 打开新增弹窗
+function openCreateRes(){
+  _editId=null;
+  document.getElementById('rcModalHead').textContent='新增资源';
+  ['em_name','em_vm','em_domain','em_type','em_account','em_password'].forEach(function(id){setField(id,'')});
+  setField('em_status','online');
+  document.getElementById('em_owner').dataset.cur='';
+  document.getElementById('em_proj').dataset.cur='';
+  fillSelectOptions();
+  fillPhySelect('');
+  var inp=document.getElementById('em_password');if(inp)inp.type='password';
+  var btn=document.getElementById('em_pw_eye');if(btn)btn.innerHTML=svg(IC.eye);
+  document.getElementById('rcModal').style.display='flex';
+}
+// 打开通用添加弹窗（pve=机房绑定 / proj=项目 / owner=负责人）
+var _addType=null;
+function openAdd(type){
+  _addType=type;
+  var head=document.getElementById('rcAddHead');
+  var body=document.getElementById('rcAddBody');
+  if(type==='pve'){
+    head.textContent='添加机房绑定';
+    body.innerHTML='<div class="rc-field"><label>主机 IP</label><input class="rc-inp" id="ad_a" placeholder="192.168.1.10" autofocus></div>'
+      +'<div class="rc-field"><label>机房 / 机柜</label><input class="rc-inp" id="ad_b" placeholder="A栋-10柜"></div>';
+  }else{
+    head.textContent=type==='proj'?'添加项目':'添加负责人';
+    body.innerHTML='<div class="rc-field"><label>'+(type==='proj'?'项目名称':'负责人姓名')+'</label>'
+      +'<input class="rc-inp" id="ad_a" placeholder="'+(type==='proj'?'核心交易':'张伟(运维)')+'" autofocus></div>';
+  }
+  document.getElementById('rcAddModal').style.display='flex';
+  var f=document.getElementById('ad_a');if(f)setTimeout(function(){try{f.focus()}catch(e){}},50);
+}
+// 解析批量导入文本
+function parseImport(text){
+  var lines=String(text||'').split(/\r?\n/).map(function(l){return l.trim()}).filter(Boolean);
+  if(lines.length && /名称|name/i.test(lines[0])) lines.shift();
+  return lines.map(function(line){
+    var cols=line.split(/[,\t]/).map(function(s){return s.trim()});
+    if(!cols[0]) return null;
+    var ownIp=cols[1]||'', parentIp=cols[6]||'';
+    return {name:cols[0],pve_ip:parentIp||ownIp,vm_ip:parentIp?ownIp:'',projects:cols[2]?[cols[2]]:[],owner:cols[3]||'',account:cols[4]||'',password:cols[5]||'',status:'online'};
+  }).filter(Boolean);
+}
+// 逐行导入（串行，返回 {ok,fail,errs}）
+function doImport(rows){
+  var ok=0,fail=0,errs=[];
+  var chain=Promise.resolve();
+  rows.forEach(function(r){
+    chain=chain.then(function(){
+      return req(API+'/resources',{method:'POST',body:r}).then(function(){ok++}).catch(function(e){fail++;errs.push(r.name+'：'+e.message)});
+    });
+  });
+  return chain.then(function(){return {ok:ok,fail:fail,errs:errs}});
+}
+// CSV 文件智能解码：UTF-8（含 BOM）优先；失败或含替换符则回退 GB18030（GBK/GB2312 超集），兼容 Excel 中文 CSV
+function decodeCsvSmart(file, cb){
+  var fr=new FileReader();
+  fr.onerror=function(){ if(cb)cb(''); };
+  fr.onload=function(){
+    var buf=fr.result; // ArrayBuffer
+    try{
+      if(buf.byteLength>=3 && buf[0]===0xEF && buf[1]===0xBB && buf[2]===0xBF){
+        if(cb)cb(new TextDecoder('utf-8').decode(buf.slice(3))); return;
+      }
+      var u8=new TextDecoder('utf-8',{fatal:true}).decode(buf);
+      if(u8.indexOf('�')<0){ if(cb)cb(u8); return; }
+    }catch(e){}
+    try{ if(cb)cb(new TextDecoder('gb18030').decode(buf)); return; }
+    catch(e2){ try{ if(cb)cb(new TextDecoder('utf-8').decode(buf)); }catch(e3){ if(cb)cb(''); } }
+  };
+  fr.readAsArrayBuffer(file);
+}
+// 下载资源台账批量导入 CSV 模板（含 BOM，Excel 中文不乱码）
+function downloadResTemplate(){
+  var header='名称,本机IP,项目,负责人,账号,密码,父级物理机IP';
+  var s1='web-01,192.168.1.10,核心交易,张伟,root,abc123,';
+  var s2='db-01,192.168.1.11,核心交易,李静,root,xyz789,192.168.1.5';
+  var csv='﻿'+header+'\n'+s1+'\n'+s2+'\n';
+  var blob=new Blob([csv],{type:'text/csv;charset=utf-8'});
+  var url=URL.createObjectURL(blob);
+  var a=document.createElement('a');
+  a.href=url;a.download='资源台账导入模板.csv';
+  document.body.appendChild(a);a.click();
+  document.body.removeChild(a);
+  setTimeout(function(){URL.revokeObjectURL(url)},1000);
+  toast('模板已下载','ok');
+}
+// 查找机器对应的资源记录
+function findMachRes(mid){
+  for(var i=0;i<RES.length;i++){if(RES[i].machine_id===mid)return RES[i];}
+  return null;
+}
+
+/* ============ 资源详情抽屉（与硬件台账一致：基本信息 + 关注/评论/时间线，删除移入详情） ============ */
+function phyNameOf(ip){ var n=''; (PHY||[]).forEach(function(p){ if(p.pve_ip===ip) n=p.name; }); return n; }
+function soonDays(d){ try{ return Math.ceil((new Date(d) - new Date())/86400000); }catch(e){ return 999; } }
+function expireCell(d){
+  if(!d) return '<span class="rc-muted">—</span>';
+  var n=soonDays(d);
+  if(n<0) return '<span class="mono" style="color:var(--r600);font-weight:600">'+esc(d)+'</span>';
+  if(n<=30) return '<span class="mono" style="color:var(--a600);font-weight:600">'+esc(d)+'</span>';
+  return '<span class="mono">'+esc(d)+'</span>';
+}
+function projTags(ps){ ps=ps||[]; if(!ps.length) return '<span class="rc-muted">—</span>'; return ps.map(function(p){return '<span class="rc-tag">'+esc(p)+'</span>';}).join(''); }
+
+// 资源台账抽屉层被 portal 到 document.body（脱离主站 transform 包含块，让 fixed 真正覆盖视口+侧栏）。
+// 但主站注入器把本页 CSS 包进了 @scope(#res-main-root){...}，body 外的节点吃不到这些规则。
+// 解决：把同一份 CSS 以「全局（不 scoped）」形式再注入一份到 <head>，供 portal 后的抽屉层使用。
+function ensureGlobalLayerStyle(){
+  if(document.getElementById('rc-global-style')) return;
+  var sc=document.getElementById('res-inline-style');
+  if(!sc) return;
+  var t=(sc.textContent||'').trim();
+  var m=t.match(/@scope\([^)]*\)\s*\{([\s\S]*)\}\s*$/);
+  var inner=m?m[1]:t;
+  var g=document.createElement('style');
+  g.id='rc-global-style';
+  g.textContent=inner;
+  (document.head||document.documentElement).appendChild(g);
+}
+function getLayer(){
+  ensureGlobalLayerStyle();
+  var h=document.getElementById('rcLayer');
+  if(!h){ h=document.createElement('div'); h.id='rcLayer'; h.className='rc-layer'; }
+  // 老模板的 #rcLayer 静态 div 没有 .rc-layer class，补上才能让 .rc-layer CSS 生效
+  if(h.className.indexOf('rc-layer')<0){ h.className='rc-layer'; }
+  // 挂到 body：脱离主站内联容器的包含块（祖先 transform/filter 会让 fixed 失效、遮罩盖不住侧栏）
+  if(h.parentNode!==document.body){ document.body.appendChild(h); }
+  h.style.display='block';
+  return h;
+}
+function closeResLayer(){ var h=document.getElementById('rcLayer'); if(h){ h.innerHTML=''; h.style.display='none'; } }
+document.addEventListener('keydown',function(e){ if(e.key==='Escape'){ var h=document.getElementById('rcLayer'); if(h && h.innerHTML) closeResLayer(); } });
+
+function openResDrawer(rec){
+  var isRes = rec.kind==='res';
+  var r=null, mres=null, mc=null;
+  if(isRes){
+    for(var i=0;i<RES.length;i++){ if(String(RES[i].id)===String(rec.id)){ r=RES[i]; break; } }
+    if(!r){ toast('资源不存在','err'); return; }
+  } else {
+    var mid=rec.id; mres=findMachRes(mid);
+    for(var j=0;j<MACHINES.length;j++){ if(MACHINES[j].id===mid){ mc=MACHINES[j]; break; } }
+  }
+  var name = isRes ? r.name : (mc?mc.name:(mres?mres.name:('机器#'+rec.id)));
+  var pve_ip = isRes ? r.pve_ip : (mc?mc.ip:(mres?mres.pve_ip:''));
+  var vm_ip = isRes ? (r.vm_ip||'') : '';
+  var ownIp = vm_ip || pve_ip || '';
+  var owner = isRes ? r.owner : (mres?mres.owner:(mc?mc.username:''));
+  var projects = isRes ? (r.projects||[]) : (mres?[ (mres.projects||[])[0]||'' ]:[]);
+  var status = isRes ? r.status : (mc?mc.online_status:(mres?mres.status:'offline'));
+  var account = isRes ? r.account : (mc?mc.username:(mres?mres.account:''));
+  var password = isRes ? r.password : (mres?mres.password:'');
+  var machine_type = isRes ? r.machine_type : '';
+  var expire_at = isRes ? r.expire_at : '';
+  var remark = isRes ? r.remark : '';
+  var creator = isRes ? r.creator : '';
+  var created_at = isRes ? r.created_at : '';
+  var updated_at = isRes ? r.updated_at : '';
+  var followers = (isRes && r.followers) ? r.followers : [];
+  var comments = (isRes && r.comments) ? r.comments : [];
+  var timeline = (isRes && r.timeline) ? r.timeline : [];
+  var followed = followers.indexOf(ME.username) >= 0;
+
+  var html = '<div class="rc-scrim" data-close="1" style="position:absolute;inset:0;background:rgba(15,23,42,.45);z-index:0"></div><aside class="rc-drawer" style="position:absolute;top:0;right:0;bottom:0;width:min(560px,100%);background:var(--n50);border-left:1px solid var(--n200);box-shadow:0 20px 60px rgba(0,0,0,.25);display:flex;flex-direction:column;z-index:1;animation:rcSlide .35s cubic-bezier(.16,1,.3,1)">'
+    + '<div class="rc-drawer-head"><div style="flex:1;min-width:0">'
+      + '<h2 class="rc-drawer-title">'+esc(name)+statusBadge(status)+'</h2>'
+      + '<div class="rc-drawer-sub">'+(isRes?('创建人 '+esc(creator||'—')+' · '+esc(created_at||'')):'监控中心设备')+'</div>'
+    + '</div>'
+    + '<button class="rc-icon-btn" data-close="1" title="关闭"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M18 6 6 18M6 6l12 12"/></svg></button>'
+    + '</div>'
+    + '<div class="rc-drawer-body">'
+    + '<div class="rc-sec"><div class="rc-sec-t">基本信息</div><dl class="rc-kv">'
+      + '<dt>本机 IP</dt><dd class="mono">'+esc(ownIp||'—')+'</dd>'
+      + (isRes && vm_ip ? ('<dt>宿主机 IP</dt><dd class="mono">'+esc(pve_ip||'—')+'</dd>') : '')
+      + (isRes ? ('<dt>所属物理机</dt><dd>'+esc(phyNameOf(pve_ip)||'—')+'</dd>') : '')
+      + '<dt>项目</dt><dd>'+projTags(projects)+'</dd>'
+      + '<dt>负责人</dt><dd>'+esc(owner||'—')+'</dd>'
+      + (isRes && machine_type ? ('<dt>机器类型</dt><dd>'+esc(machine_type||'—')+'</dd>') : '')
+      + '<dt>状态</dt><dd>'+statusBadge(status)+'</dd>'
+      + '<dt>账号</dt><dd class="mono">'+esc(account||'—')+'</dd>'
+      + '<dt>密码</dt><dd class="mono">'+pwCell(password)+'</dd>'
+      + (isRes && expire_at ? ('<dt>到期时间</dt><dd>'+expireCell(expire_at)+'</dd>') : '')
+      + (isRes && remark ? ('<dt>备注</dt><dd>'+esc(remark)+'</dd>') : '')
+      + (isRes ? ('<dt>更新于</dt><dd class="rc-muted mono">'+esc(updated_at||'—')+'</dd>') : '')
+    + '</dl></div>';
+
+  if(isRes){
+    html += '<div class="rc-sec"><div class="rc-sec-t">关注者 '+followers.length+'</div>'
+      + (followers.length ? followers.map(function(f){return '<span class="rc-tag">'+esc(f)+'</span>';}).join('') : '<span class="rc-muted">暂无关注者</span>')
+      + '</div>'
+      + '<div class="rc-sec"><div class="rc-sec-t">评论 '+comments.length+'</div>'
+        + '<div id="rcCmts">'
+        + (comments.length ? comments.map(function(c){
+            return '<div class="rc-cmt"><div class="rc-cmt-av">'+esc((c.user||'?').charAt(0).toUpperCase())+'</div><div style="flex:1;min-width:0">'
+              + '<div class="rc-cmt-h"><span class="rc-cmt-u">'+esc(c.user)+'</span><span class="rc-cmt-t">'+esc(c.time||'')+'</span></div>'
+              + '<div class="rc-cmt-x">'+esc(c.text)+'</div></div></div>';
+          }).join('') : '<div class="rc-muted">还没有评论，来说两句</div>')
+        + '</div>'
+        + '<div class="rc-cmt-box"><input class="rc-inp" id="rcCmtIn" placeholder="写下你的想法…" maxlength="500"/><button class="rc-btn rc-btn-secondary" id="rcCmtBtn">发送</button></div>'
+      + '</div>'
+      + '<div class="rc-sec"><div class="rc-sec-t">操作时间线</div><div class="rc-tl">'
+        + (timeline.length ? timeline.slice().reverse().map(function(t){
+            return '<div class="rc-tl-i"><div class="rc-tl-a">'+esc(t.action)+'</div><div class="rc-tl-m">'+esc(t.user||'')+' · '+esc(t.time||'')+'</div></div>';
+          }).join('') : '<div class="rc-muted">暂无记录</div>')
+      + '</div></div>';
+  }
+
+  html += '</div><div class="rc-drawer-foot">'
+    + (isRes ? '<button class="rc-btn rc-btn-secondary" id="rcFollow">'+((followed?'★ 取消关注':'☆ 关注'))+'</button>' : '')
+    + (isAdmin() ? ('<button class="rc-btn rc-btn-secondary" id="rcEdit">编辑</button><div class="rc-spacer"></div><button class="rc-btn rc-btn-danger" id="rcDel">删除</button>') : '')
+    + '</div></aside>';
+
+  var host=getLayer(); host.innerHTML=html;
+  host.querySelectorAll('[data-close]').forEach(function(el){ el.onclick=closeResLayer; });
+
+  if(isRes){
+    var dFollow=document.getElementById('rcFollow');
+    if(dFollow) dFollow.onclick=function(){
+      req(API+'/resources/'+r.id+'/follow',{method:'POST'}).then(function(u){
+        for(var i=0;i<RES.length;i++){ if(RES[i].id===u.id){ RES[i]=u; break; } }
+        openResDrawer({kind:'res',id:r.id});
+      }).catch(function(e){ toast(e.message,'err'); });
+    };
+    var send=function(){
+      var v=(document.getElementById('rcCmtIn')||{}).value||''; v=v.trim(); if(!v) return;
+      var btn=document.getElementById('rcCmtBtn'); if(btn) btn.disabled=true;
+      req(API+'/resources/'+r.id+'/comment',{method:'POST',body:{text:v}}).then(function(u){
+        for(var i=0;i<RES.length;i++){ if(RES[i].id===u.id){ RES[i]=u; break; } }
+        openResDrawer({kind:'res',id:r.id});
+      }).catch(function(e){ toast(e.message,'err'); if(btn) btn.disabled=false; });
+    };
+    var cb=document.getElementById('rcCmtBtn'); if(cb) cb.onclick=send;
+    var ci=document.getElementById('rcCmtIn'); if(ci) ci.addEventListener('keydown',function(e){ if(e.key==='Enter') send(); });
+  }
+  if(isAdmin()){
+    document.getElementById('rcEdit').onclick=function(){
+      if(isRes){ openEditRes(r.id); }
+      else { editMachFromDrawer(rec.id); }
+    };
+    document.getElementById('rcDel').onclick=function(){
+      openConfirmRes({kind:rec.kind,id:rec.id,name:name});
+    };
+  }
+}
+function editMachFromDrawer(mid){
+  var matched=findMachRes(mid);
+  if(matched){ openEditRes(matched.id); return; }
+  var mc=null; for(var i=0;i<MACHINES.length;i++){ if(MACHINES[i].id===mid){ mc=MACHINES[i]; break; } }
+  if(!mc){ toast('机器不存在','err'); return; }
+  req(API+'/resources',{method:'POST',body:{name:mc.name,pve_ip:mc.ip,status:mc.online_status,account:mc.username,machine_id:mid,category:'physical'}})
+    .then(function(created){ load().then(function(){ if(window.__RC_SET_COUNTS__)window.__RC_SET_COUNTS__(cnts()); openEditRes(created.id); }); })
+    .catch(function(e){ toast(e.message,'err'); });
+}
+function openConfirmRes(rec){
+  var html='<div class="rc-scrim" data-close="1"></div><div class="rc-modal-box" style="position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);z-index:6000;width:420px;max-width:94vw">'
+    + '<div class="rc-modal-head">删除资源<span class="rc-modal-x" data-close="1">×</span></div>'
+    + '<div class="rc-modal-body" style="display:block;color:var(--n900);font-size:13px;line-height:1.7">确定要删除 <b>'+esc(rec.name)+'</b> 吗？<br/>此操作不可恢复。</div>'
+    + '<div class="rc-modal-foot"><button class="rc-btn rc-btn-secondary" data-close="1">取消</button><button class="rc-btn rc-btn-danger" id="rcDelOk">确认删除</button></div>'
+    + '</div>';
+  var host=getLayer(); host.innerHTML=html;
+  host.querySelectorAll('[data-close]').forEach(function(el){ el.onclick=closeResLayer; });
+  document.getElementById('rcDelOk').onclick=function(){
+    if(rec.kind==='mach'){
+      var mres=findMachRes(rec.id); var tasks=[];
+      if(mres) tasks.push(req(API+'/resources/'+mres.id,{method:'DELETE'}));
+      var excl=(OPTS.machine_exclude||[]).slice(); if(excl.indexOf(rec.id)<0) excl.push(rec.id);
+      tasks.push(req(API+'/options',{method:'PUT',body:{machine_exclude:excl}}));
+      Promise.all(tasks).then(function(){ closeResLayer(); load().then(function(){ if(window.__RC_SET_COUNTS__)window.__RC_SET_COUNTS__(cnts()); go('resources'); toast('已从台账移除','ok'); }); }).catch(function(e){ toast(e.message,'err'); });
+    } else {
+      req(API+'/resources/'+rec.id,{method:'DELETE'}).then(function(){ closeResLayer(); load().then(function(){ if(window.__RC_SET_COUNTS__)window.__RC_SET_COUNTS__(cnts()); go('resources'); toast('已删除','ok'); }); }).catch(function(e){ toast(e.message,'err'); });
+    }
+  };
+}
+
+document.addEventListener('click',function(e){
+  var t=e.target;
+  var tb=t.closest('[data-tab]');if(tb){go(tb.dataset.tab);return}
+  var j=t.closest('[data-jump]');if(j){var jk=j.dataset.jump;if(jk==='physical'){if(window.__INJECT_TO__){window.__INJECT_TO__('physical');}else{location.href='/physical.html';}return;}if(jk==='cabinets'){if(window.__INJECT_TO__){window.__INJECT_TO__('cabinets');}else{location.href='/cabinets.html';}return;}if(jk==='monitor'){if(window.__GO_ROUTE__){window.__GO_ROUTE__('/machines');}else{location.href='/machines';}return;}go(jk);return}
+  // 资源台账：关闭编辑弹窗
+  if(t.closest('[data-closemodal]')){document.getElementById('rcModal').style.display='none';return}
+  // 批量导入弹窗：关闭
+  if(t.closest('[data-closeimport]')){document.getElementById('rcImportModal').style.display='none';return}
+  // 通用添加弹窗：关闭
+  if(t.closest('[data-closeadd]')){document.getElementById('rcAddModal').style.display='none';return}
+  // 机房管理 / 项目 / 负责人：打开添加弹窗
+  var ap=t.closest('[data-addpve]');if(ap){openAdd('pve');return}
+  var at=t.closest('[data-addtag]');if(at){openAdd(at.dataset.addtag);return}
+  // 项目 / 负责人卡片：跳转资源台账并按该项目/负责人过滤
+  var vt=t.closest('[data-viewtag]');if(vt){
+    var vk=vt.dataset.viewtag,vv=vt.dataset.viewval||'';
+    if(vk==='proj'){_projFilter=vv;_ownerFilter='';}
+    else{_ownerFilter=vv;_projFilter='';}
+    _statusFilter='';_phyFilter='';_q='';
+    go('resources');
+    return;
+  }
+  // 通用添加弹窗：保存
+  if(t.closest('#rcAddSave')){
+    var av=(document.getElementById('ad_a')||{}).value||'';
+    var bv=(document.getElementById('ad_b')||{}).value||'';
+    if(_addType==='pve'){
+      if(!av.trim()||!bv.trim()){toast('主机 IP 和机房都要填','warn');return}
+      var items=(OPTS.bindings||{}).pve_location||[],h=OPTS.pve_hosts||[],l=OPTS.locations||[];
+      items.push({host:av.trim(),location:bv.trim()});
+      if(h.indexOf(av.trim())<0)h.push(av.trim());
+      if(l.indexOf(bv.trim())<0)l.push(bv.trim());
+      save({bindings:{pve_location:items,project_ip:(OPTS.bindings||{}).project_ip||[]},pve_hosts:h,locations:l},function(){document.getElementById('rcAddModal').style.display='none';go('pve')});
+    }else{
+      if(!av.trim()){toast('请输入','warn');return}
+      var arr=_addType==='proj'?(OPTS.projects||[]):(OPTS.owners||[]);
+      if(arr.indexOf(av.trim())<0)arr.push(av.trim());
+      var bd={};
+      if(_addType==='proj')bd.projects=arr;else bd.owners=arr;
+      save(bd,function(){document.getElementById('rcAddModal').style.display='none';go(_addType)});
+    }
+    return;
+  }
+  // 资源台账：新增资源
+  if(t.closest('#btn-new')){openCreateRes();return}
+  // 资源台账：打开批量导入
+  if(t.closest('#btn-import')){document.getElementById('rcImportModal').style.display='flex';return}
+  // 资源台账：下载批量导入模板
+  if(t.closest('#btn-import-tpl')){downloadResTemplate();return}
+  if(t.closest('#btn-export')){exportResCsv();return}
+  // 批量导入：开始导入
+  if(t.closest('#im_go')){
+    var imBtn=t.closest('#im_go');
+    var taText=(document.getElementById('im_ta')||{}).value||'';
+    var fileText=window.__IM_FILE_TEXT__||'';
+    var text=(taText||'')+(taText&&fileText?'\n':'')+fileText;
+    var rows=parseImport(text);
+    if(!rows.length){toast('未解析到有效数据，请检查格式','warn');return}
+    imBtn.disabled=true;imBtn.textContent='导入中…';
+    var res=document.getElementById('im_result');
+    doImport(rows).then(function(r){
+      imBtn.disabled=false;imBtn.textContent='开始导入';
+      var html='成功导入 <b>'+r.ok+'</b> 条'+(r.fail?('，失败 <b>'+r.fail+'</b> 条'):'');
+      res.className='rc-import-result'+(r.fail?' has-err':' ok');
+      res.innerHTML=html+(r.errs.length?'<br>'+r.errs.slice(0,20).map(function(x){return'<div class="line">'+esc(x)+'</div>'}).join(''):'');
+      window.__IM_FILE_TEXT__=null;
+      var fin=document.getElementById('im_file_name');if(fin)fin.textContent='未选择文件';
+      var ta=document.getElementById('im_ta');if(ta)ta.value='';
+      var file=document.getElementById('im_file');if(file)file.value='';
+      load().then(function(){ if(window.__RC_SET_COUNTS__)window.__RC_SET_COUNTS__(cnts()); go('resources'); });
+    }).catch(function(e){
+      imBtn.disabled=false;imBtn.textContent='开始导入';
+      res.className='rc-import-result has-err';res.innerHTML=esc(e.message||'导入失败');
+    });
+    return;
+  }
+  // 资源台账：密码显示/隐藏
+  var eye=t.closest('.pw-eye');if(eye){
+    var cell=eye.parentElement,pv=cell.querySelector('.pw-val');
+    if(eye.dataset.show==='1'){pv.textContent='••••••';eye.dataset.show='0';eye.innerHTML=svg(IC.eye);}
+    else{pv.textContent=eye.dataset.pw||'';eye.dataset.show='1';eye.innerHTML=svg(IC.eyeOff);}
+    return;
+  }
+  // 编辑弹窗：密码框显示/隐藏
+  if(t.closest('#em_pw_eye')){
+    var inp=document.getElementById('em_password'),btn=document.getElementById('em_pw_eye');
+    if(inp&&btn){
+      if(inp.type==='password'){inp.type='text';btn.innerHTML=svg(IC.eyeOff);}
+      else{inp.type='password';btn.innerHTML=svg(IC.eye);}
+    }
+    return;
+  }
+  // 资源台账：打开详情抽屉（与硬件台账一致：表格仅 详情 + 编辑，删除在详情里）
+  var vr=t.closest('[data-view]');if(vr){openResDrawer({kind:vr.dataset.vkind,id:+vr.dataset.view});return}
+  // 资源台账：编辑资源记录
+  var er=t.closest('[data-editres]');if(er){openEditRes(er.dataset.editres);return}
+  // 资源台账：编辑机器（首次编辑自动导入为资源记录）
+  var em=t.closest('[data-editmach]');if(em){
+    var mid=+em.dataset.editmach;
+    var matched=findMachRes(mid);
+    if(matched){openEditRes(matched.id);return}
+    var mc=null;
+    for(var i=0;i<MACHINES.length;i++){if(MACHINES[i].id===mid){mc=MACHINES[i];break}}
+    if(!mc){toast('机器不存在','err');return}
+    req(API+'/resources',{method:'POST',body:{name:mc.name,pve_ip:mc.ip,status:mc.online_status,account:mc.username,machine_id:mid,category:'physical'}})
+      .then(function(created){load().then(function(){if(window.__RC_SET_COUNTS__)window.__RC_SET_COUNTS__(cnts());openEditRes(created.id);});})
+      .catch(function(e){toast(e.message,'err')});
+    return;
+  }
+  // 资源台账：删除已移至详情抽屉（见 openConfirmRes）
+  // 资源台账：保存编辑
+  if(t.closest('#em_save')){
+    var ownIp=val('em_vm'), parentIp=val('em_pve');
+    var body={
+      name:val('em_name'),
+      // 选了父级物理机：pve_ip=父级 IP、vm_ip=本机 IP；未选（自身即物理机）：本机 IP 落 pve_ip
+      pve_ip:parentIp||ownIp, vm_ip:parentIp?ownIp:'',
+      domain:val('em_domain'),
+      owner:val('em_owner'),projects:val('em_proj')?[val('em_proj')]:[],
+      machine_type:val('em_type'),account:val('em_account'),password:val('em_password'),
+      status:val('em_status')||'online'
+    };
+    if(!body.name){toast('资源名称不能为空','warn');return}
+    var url=_editId?(API+'/resources/'+_editId):(API+'/resources');
+    var method=_editId?'PUT':'POST';
+    req(url,{method:method,body:body}).then(function(){
+      document.getElementById('rcModal').style.display='none';
+      load().then(function(){ if(window.__RC_SET_COUNTS__)window.__RC_SET_COUNTS__(cnts()); go('resources'); toast(_editId?'已保存':'已新增','ok'); });
+    }).catch(function(e){toast(e.message,'err')});return;
+  }
+  // 机房管理：移除单个主机绑定
+  var dh=t.closest('[data-delpve-host]');if(dh){
+    if(!confirm('确定移除该主机绑定？'))return;
+    var host=dh.dataset.delpveHost,loc=dh.dataset.delpveLocval;
+    var items=(OPTS.bindings||{}).pve_location||[];
+    var newItems=items.filter(function(b){return !(b.host===host&&b.location===loc)});
+    save({bindings:{pve_location:newItems,project_ip:(OPTS.bindings||{}).project_ip||[]},pve_hosts:OPTS.pve_hosts||[],locations:OPTS.locations||[]},function(){go('pve')});
+    return;
+  }
+  // 机房管理：删除整个机房
+  var dl=t.closest('[data-delpve-loc]');if(dl){
+    if(!confirm('确定删除该机房及其下所有主机绑定？'))return;
+    var loc=dl.dataset.delpveLoc;
+    var items=(OPTS.bindings||{}).pve_location||[];
+    var newItems=items.filter(function(b){return b.location!==loc});
+    save({bindings:{pve_location:newItems,project_ip:(OPTS.bindings||{}).project_ip||[]},pve_hosts:OPTS.pve_hosts||[],locations:OPTS.locations||[]},function(){go('pve')});
+    return;
+  }
+  var dt=t.closest('[data-deltag]');if(dt){if(!confirm('确定删除？'))return;var k=dt.dataset.deltag,ix=+dt.dataset.ix,arr=k==='proj'?(OPTS.projects||[]):k==='owner'?(OPTS.owners||[]):(OPTS.machine_types||[]);arr.splice(ix,1);var b={};if(k==='proj')b.projects=arr;else if(k==='owner')b.owners=arr;else b.machine_types=arr;save(b,function(){go(k)});return}
+});
+
+// 搜索框：实时过滤内容区（不重建搜索框，避免输入法/光标错乱）
+document.addEventListener('input',function(e){
+  if(e.target && e.target.id==='rc-q'){
+    _q=e.target.value.trim();
+    renderBody();
+  }
+});
+
+// 批量导入：CSV 文件读取 + 筛选器
+document.addEventListener('change',function(e){
+  if(e.target && e.target.id==='rc-proj-filter'){_projFilter=e.target.value;renderBody();return}
+  if(e.target && e.target.id==='rc-owner-filter'){_ownerFilter=e.target.value;renderBody();return}
+  if(e.target && e.target.id==='rc-status-filter'){_statusFilter=e.target.value;renderBody();return}
+  if(e.target && e.target.id==='rc-phy-filter'){_phyFilter=e.target.value;renderBody();return}
+  if(e.target && e.target.id==='im_file'){
+    var f=e.target.files&&e.target.files[0];
+    if(!f)return;
+    var fin=document.getElementById('im_file_name');if(fin)fin.textContent=f.name;
+    decodeCsvSmart(f, function(txt){ window.__IM_FILE_TEXT__=txt; });
+  }
+});
+
+// 项目/负责人：关联资源数悬停提示（名称 + IP）
+var _tipEl=null;
+document.addEventListener('mouseover',function(e){
+  var c=e.target.closest('.rc-count');
+  var tip=document.getElementById('rcTip');
+  if(!tip)return;
+  if(!c || c.classList.contains('rc-count-empty')){tip.style.display='none';_tipEl=null;return}
+  if(c===_tipEl)return;
+  _tipEl=c;
+  var list=resList(c.dataset.tip,c.dataset.tipval);
+  if(!list.length){tip.style.display='none';return}
+  var html=list.slice(0,12).map(function(r){
+    return'<div class="t-row"><span class="t-name">'+esc(r.name)+'</span><span class="t-ip">'+esc(r.ip||'—')+'</span></div>';
+  }).join('');
+  if(list.length>12)html+='<div class="t-more">…还有 '+(list.length-12)+' 台</div>';
+  tip.innerHTML=html;
+  tip.style.display='block';
+  var rect=c.getBoundingClientRect();
+  var tw=tip.offsetWidth,th=tip.offsetHeight;
+  var x=rect.left,y=rect.bottom+8;
+  if(x+tw>window.innerWidth-12)x=window.innerWidth-tw-12;
+  if(x<12)x=12;
+  if(y+th>window.innerHeight-8)y=rect.top-th-8;
+  tip.style.left=x+'px';tip.style.top=y+'px';
+});
+
+window.__ADMIN_API__={open:function(p){if(p==='resources')go('resources');},refresh:function(){load().then(function(){if(window.__RC_SET_COUNTS__)window.__RC_SET_COUNTS__(cnts());render()})}};
+
+/* 2026-09-07 资源管理权限拆分：admin 或持有任一资源子模块权限(overview/resources/proj/owner)的用户可进入；
+   写操作仍由后端 admin-only + 前端按钮 isAdmin() 门控兜底 */
+req('/api/auth/me').then(function(d){
+  if(d){ if(d.role)ME.role=d.role; if(d.username)ME.username=d.username; if(d.permissions)ME.permissions=d.permissions; ME._meLoaded=true; }
+  var rcAllow=d&&(d.role==='admin'||RC_PERM_TABS.some(function(k){return (d.permissions||[]).indexOf(k)>=0}));
+  if(!rcAllow){document.getElementById('rcMain').innerHTML='<div class="rc-empty-box">暂无资源管理访问权限，请联系管理员开通</div>';return}
+  load().then(function(){
+    if(window.__RC_SET_COUNTS__)window.__RC_SET_COUNTS__(cnts());
+    var t=window.__RC_TAB__||'overview';window.__RC_TAB__='';
+    go(t);
+  })
+}).catch(function(){document.getElementById('rcMain').innerHTML='<div class="rc-empty-box">鉴权失败，请刷新</div>'});
+})();
+</script>
+</body>
+</html>

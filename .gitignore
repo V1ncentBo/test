@@ -15,3 +15,7 @@ node_modules/
 _snap.tar.gz
 _html.tar.gz
 *.log
+.pat-token
+_stage/
+.pat-token
+_stage/

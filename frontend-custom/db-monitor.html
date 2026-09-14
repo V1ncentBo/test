@@ -1,0 +1,821 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>数据库监控 · 智能监控平台</title>
+<link rel="icon" type="image/png" href="/brand-logo.png" />
+<style>
+/* ============================================================
+   Design tokens —— 与平台 index-*.css / physical.html 完全一致
+   （注入模式下 :root 块会被剥离，直接继承主站 token；独立打开时本块生效）
+   ============================================================ */
+:root{
+  --blue-50:oklch(95% .02 220);--blue-100:oklch(85% .06 220);--blue-200:oklch(75% .1 220);
+  --blue-400:oklch(65% .14 210);--blue-600:oklch(55% .12 210);--blue-700:oklch(45% .1 210);--blue-900:oklch(30% .06 210);
+  --green-100:oklch(92% .06 150);--green-400:oklch(68% .18 148);--green-600:oklch(52% .16 148);--green-900:oklch(28% .08 148);
+  --amber-100:oklch(93% .08 85);--amber-400:oklch(72% .16 80);--amber-600:oklch(55% .14 70);--amber-900:oklch(30% .06 70);
+  --coral-100:oklch(93% .04 20);--coral-400:oklch(58% .2 25);--coral-600:oklch(45% .16 25);--coral-900:oklch(25% .08 20);
+  --purple-100:oklch(93% .04 280);--purple-400:oklch(60% .16 280);--purple-600:oklch(45% .14 280);--purple-900:oklch(25% .08 280);
+  --neutral-50:oklch(98% .005 240);--neutral-100:oklch(93% .008 240);--neutral-200:oklch(85% .008 240);
+  --neutral-300:oklch(72% .01 240);--neutral-400:oklch(60% .01 240);--neutral-500:oklch(48% .01 240);
+  --neutral-600:oklch(38% .008 240);--neutral-700:oklch(28% .008 240);--neutral-750:oklch(23% .006 240);
+  --neutral-800:oklch(18% .006 240);--neutral-850:oklch(15% .005 240);--neutral-900:oklch(12% .004 240);--neutral-950:oklch(8% .003 240);
+
+  --surface-root:var(--neutral-50);--surface-default:var(--neutral-50);
+  --surface-raised:#fff;--surface-overlay:#fff;
+  --text-primary:var(--neutral-900);--text-secondary:var(--text-secondary,var(--neutral-500));--text-tertiary:var(--neutral-300);
+  --text-inverse:var(--neutral-50);--text-link:var(--blue-700);
+  --border-subtle:var(--neutral-200);--border-default:var(--neutral-300);--border-strong:var(--neutral-400);
+  --accent:var(--blue-700);--accent-hover:var(--blue-900);--accent-solid:var(--blue-700);
+  --accent-subtle:var(--blue-100);--accent-glow:oklch(55% .2 210 / .35);
+  --success:var(--green-600);--success-subtle:var(--green-100);
+  --warning:var(--amber-600);--warning-subtle:var(--amber-100);
+  --danger:var(--coral-600);--danger-subtle:var(--coral-100);
+  --info:var(--purple-600);--info-subtle:var(--purple-100);
+  --shadow-card:0 1px 3px oklch(0% 0 0 / .06);
+  --shadow-elevated:0 4px 16px oklch(0% 0 0 / .1);
+  --radius-sm:6px;--radius-md:10px;--radius-lg:14px;--radius-xl:20px;
+  --space-1:4px;--space-2:8px;--space-3:12px;--space-4:16px;--space-5:20px;
+  --space-6:24px;--space-8:32px;--space-10:40px;--space-12:48px;
+  --text-2xs:11px;--text-xs:12px;--text-sm:14px;--text-base:16px;--text-lg:18px;
+  --text-xl:20px;--text-2xl:24px;--text-3xl:32px;
+  --duration-fast:.12s;--duration-normal:.2s;--duration-slow:.35s;
+  --ease-in-out:cubic-bezier(.65,0,.35,1);--ease-out-expo:cubic-bezier(.16,1,.3,1);--ease-out-quart:cubic-bezier(.25,1,.5,1);
+  --font-sans:"Inter",-apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,"PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;
+  --font-mono:"JetBrains Mono","Cascadia Code","Fira Code","Consolas",monospace;
+  --sidebar-w:220px;
+}
+:root.dark{
+  --surface-root:var(--neutral-950);--surface-default:var(--neutral-900);
+  --surface-raised:var(--neutral-850);--surface-overlay:var(--neutral-800);
+  --text-primary:var(--neutral-100);--text-secondary:var(--neutral-400);--text-tertiary:var(--neutral-600);
+  --text-inverse:var(--neutral-900);--text-link:var(--blue-400);
+  --border-subtle:var(--neutral-750);--border-default:var(--neutral-700);--border-strong:var(--neutral-600);
+  --accent-subtle:var(--blue-900);--accent-glow:oklch(65% .2 210 / .4);
+  --success:var(--green-400);--success-subtle:var(--green-900);
+  --warning:var(--amber-400);--warning-subtle:var(--amber-900);
+  --danger:var(--coral-400);--danger-subtle:var(--coral-900);
+  --info:var(--purple-400);--info-subtle:var(--purple-900);
+  --shadow-card:none;--shadow-elevated:0 4px 24px oklch(0% 0 0 / .4);
+}
+*,*::before,*::after{box-sizing:border-box}
+html,body{height:100%}
+body{margin:0;background:var(--surface-root);color:var(--text-primary);
+  font:400 var(--text-sm)/1.6 var(--font-sans);-webkit-font-smoothing:antialiased}
+a{color:inherit;text-decoration:none}
+button,input,select,textarea{font:inherit;color:inherit}
+:focus-visible{outline:none;box-shadow:0 0 0 3px var(--accent-glow);border-radius:var(--radius-sm)}
+.mono{font-family:var(--font-mono);font-variant-numeric:tabular-nums}
+
+/* ---------- Layout ---------- */
+.app{display:flex;min-height:100vh}
+.sidebar{width:var(--sidebar-w);flex:0 0 var(--sidebar-w);background:var(--surface-raised);
+  border-right:1px solid var(--border-subtle);display:flex;flex-direction:column;
+  position:sticky;top:0;height:100vh;overflow-y:auto;z-index:100}
+.brand{display:flex;align-items:center;gap:var(--space-3);padding:var(--space-5) var(--space-4);
+  border-bottom:1px solid var(--border-subtle)}
+.brand img{width:28px;height:28px;border-radius:var(--radius-sm);object-fit:cover}
+.brand-txt{font-size:var(--text-sm);font-weight:700;letter-spacing:-.01em;line-height:1.2}
+.brand-sub{font-size:var(--text-2xs);color:var(--text-secondary);font-weight:500;letter-spacing:.04em}
+.nav{padding:var(--space-3) var(--space-2);display:flex;flex-direction:column;gap:2px;flex:1}
+.nav-label{padding:var(--space-3) var(--space-3) var(--space-1);font-size:var(--text-2xs);
+  font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--text-tertiary)}
+.nav-item{display:flex;align-items:center;gap:var(--space-3);padding:9px var(--space-3);
+  border-radius:var(--radius-sm);color:var(--text-secondary);font-size:var(--text-sm);
+  transition:background var(--duration-fast),color var(--duration-fast)}
+.nav-item:hover{background:var(--surface-overlay);color:var(--text-primary)}
+:root.dark .nav-item:hover{background:var(--neutral-800)}
+.nav-item svg{width:16px;height:16px;flex:0 0 16px;stroke-width:1.8}
+.nav-item.active{background:var(--accent-subtle);color:var(--accent);font-weight:600}
+:root.dark .nav-item.active{color:var(--blue-400)}
+
+.main{flex:1;min-width:0;display:flex;flex-direction:column}
+.topbar{position:sticky;top:0;z-index:90;background:var(--surface-raised);border-bottom:1px solid var(--border-subtle);
+  display:flex;align-items:center;gap:var(--space-4);padding:var(--space-3) var(--space-6);min-height:56px}
+.crumb{display:flex;align-items:center;gap:var(--space-2);font-size:var(--text-sm);color:var(--text-secondary);min-width:0}
+.crumb b{color:var(--text-primary);font-weight:600}
+.crumb .sep{color:var(--text-tertiary)}
+.topbar-right{margin-left:auto;display:flex;align-items:center;gap:var(--space-2)}
+.icon-btn{background:none;border:1px solid transparent;border-radius:var(--radius-sm);padding:6px;cursor:pointer;
+  color:var(--text-secondary);display:grid;place-items:center;transition:background var(--duration-fast),color var(--duration-fast)}
+.icon-btn:hover{background:var(--surface-overlay);color:var(--text-primary)}
+:root.dark .icon-btn:hover{background:var(--neutral-800)}
+.icon-btn svg{width:17px;height:17px;stroke-width:1.8}
+.who{display:flex;align-items:center;gap:var(--space-2);padding-left:var(--space-3);border-left:1px solid var(--border-subtle);margin-left:var(--space-1)}
+.avatar{width:26px;height:26px;border-radius:50%;background:var(--accent);color:#fff;display:grid;place-items:center;font-size:var(--text-xs);font-weight:700;flex:0 0 26px}
+.who-name{font-size:var(--text-xs);font-weight:600;line-height:1.2}
+.who-role{font-size:var(--text-2xs);color:var(--text-secondary);line-height:1.2}
+
+.content{padding:var(--space-6);max-width:1600px;width:100%;margin:0 auto;flex:1}
+.page-head{display:flex;align-items:flex-end;gap:var(--space-4);margin-bottom:var(--space-5);flex-wrap:wrap}
+.page-title{font-size:var(--text-2xl);font-weight:650;letter-spacing:-.015em;margin:0;line-height:1.25}
+.page-desc{font-size:var(--text-xs);color:var(--text-secondary);margin:2px 0 0}
+
+/* ---------- Stats ---------- */
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:var(--space-4);margin-bottom:var(--space-5)}
+.stat{background:var(--surface-raised);border:1px solid var(--border-subtle);border-radius:var(--radius-lg);
+  box-shadow:var(--shadow-card);padding:var(--space-5);position:relative;overflow:hidden;
+  opacity:0;animation:statFade .5s cubic-bezier(.16,1,.3,1) both;animation-delay:calc(var(--i,0)*.09s)}
+.stat:hover{transform:translateY(-3px);box-shadow:var(--shadow-elevated);transition:transform .2s,box-shadow .2s}
+.stat-ico{display:inline-flex;width:30px;height:30px;border-radius:9px;align-items:center;justify-content:center;
+  margin-bottom:10px;background:color-mix(in srgb,currentColor 13%,transparent)}
+.stat-ico svg{width:17px;height:17px}
+@keyframes statFade{from{opacity:0}to{opacity:1}}
+.stat::after{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--bar,transparent)}
+.stat-k{font-size:var(--text-2xs);font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--text-secondary)}
+.stat-v{font-size:var(--text-3xl);font-weight:700;line-height:1.1;margin-top:var(--space-2);letter-spacing:-.02em}
+.stat-x{font-size:var(--text-2xs);color:var(--text-tertiary);margin-top:2px}
+
+/* ---------- Toolbar ---------- */
+.toolbar{display:flex;gap:var(--space-3);align-items:center;flex-wrap:wrap;margin-bottom:var(--space-4)}
+.search{position:relative;flex:1;min-width:200px;max-width:340px}
+.search svg{position:absolute;left:10px;top:50%;transform:translateY(-50%);width:15px;height:15px;color:var(--text-tertiary);stroke-width:1.8;pointer-events:none}
+.input,.select{background:var(--surface-raised);border:1px solid var(--border-default);border-radius:var(--radius-sm);
+  padding:7px 12px;font-size:var(--text-sm);width:100%;transition:border-color var(--duration-fast),box-shadow var(--duration-fast)}
+.search .input{padding-left:32px}
+.input::placeholder{color:var(--text-tertiary)}
+.input:focus,.select:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-glow)}
+.select{width:auto;min-width:118px;cursor:pointer}
+select.input,select.select{-webkit-appearance:none;appearance:none;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%236b7280' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat:no-repeat;background-position:right 10px center;background-size:14px 14px;padding-right:32px}
+.spacer{flex:1}
+.btn{border-radius:var(--radius-sm);padding:7px 14px;font-size:var(--text-sm);font-weight:500;cursor:pointer;
+  border:1px solid transparent;display:inline-flex;align-items:center;gap:6px;white-space:nowrap;
+  transition:background var(--duration-fast),border-color var(--duration-fast),color var(--duration-fast)}
+.btn svg{width:15px;height:15px;stroke-width:2}
+.btn-primary{background:var(--accent);color:#fff;border-color:var(--accent)}
+.btn-primary:hover{background:var(--accent-hover);border-color:var(--accent-hover)}
+.btn-primary:active{transform:translateY(1px)}
+.btn-secondary{background:var(--surface-raised);color:var(--text-primary);border-color:var(--border-default)}
+.btn-secondary:hover{border-color:var(--accent);color:var(--accent)}
+.btn-danger{background:transparent;color:var(--danger);border-color:var(--border-default)}
+.btn-danger:hover{background:var(--danger-subtle);border-color:var(--danger)}
+.btn[disabled]{opacity:.5;cursor:not-allowed}
+.btn-sm{padding:4px 9px;font-size:var(--text-xs)}
+
+/* ---------- Segmented control ---------- */
+.seg{display:inline-flex;background:var(--surface-overlay);border:1px solid var(--border-subtle);
+  border-radius:var(--radius-md);padding:3px;gap:2px}
+.seg button{border:none;background:transparent;color:var(--text-secondary);font-size:var(--text-sm);
+  font-weight:500;padding:6px 14px;border-radius:var(--radius-sm);cursor:pointer;transition:all var(--duration-fast)}
+.seg button.active{background:var(--surface-raised);color:var(--accent);font-weight:600;box-shadow:var(--shadow-card)}
+:root.dark .seg button.active{background:var(--neutral-800)}
+
+/* ---------- Cards / Table ---------- */
+.card{background:var(--surface-raised);border:1px solid var(--border-subtle);border-radius:var(--radius-lg);
+  box-shadow:var(--shadow-card);overflow:hidden}
+.tbl-scroll{overflow-x:auto}
+table{width:100%;border-collapse:collapse;font-size:var(--text-sm)}
+thead th{background:var(--surface-overlay);text-align:left;padding:10px var(--space-4);font-size:var(--text-2xs);
+  font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--text-secondary);
+  border-bottom:1px solid var(--border-subtle);white-space:nowrap}
+:root.dark thead th{background:var(--neutral-800)}
+tbody td{padding:11px var(--space-4);border-bottom:1px solid var(--border-subtle);vertical-align:middle}
+tbody tr:last-child td{border-bottom:none}
+.cell-name{font-weight:600;display:flex;align-items:center;gap:var(--space-2)}
+.dot{width:6px;height:6px;border-radius:50%;flex:0 0 6px}
+.muted{color:var(--text-secondary)}
+.nowrap{white-space:nowrap}
+.acts{display:flex;gap:var(--space-1);justify-content:flex-end}
+.acts .btn{border:1px solid var(--border-default)}
+.acts .btn:hover{border-color:var(--accent);color:var(--accent)}
+
+.badge{display:inline-flex;align-items:center;gap:5px;padding:2px 8px;border-radius:var(--radius-xl);
+  font-size:var(--text-xs);font-weight:600;line-height:1.5;white-space:nowrap}
+.badge-success{background:var(--success-subtle);color:var(--success)}
+.badge-warning{background:var(--warning-subtle);color:var(--warning)}
+.badge-danger{background:var(--danger-subtle);color:var(--danger)}
+.badge-info{background:var(--info-subtle);color:var(--info)}
+.badge-neutral{background:var(--surface-overlay);color:var(--text-secondary)}
+:root.dark .badge-neutral{background:var(--neutral-800)}
+.tag{display:inline-block;padding:1px 7px;border-radius:var(--radius-sm);background:var(--accent-subtle);
+  color:var(--accent);font-size:var(--text-2xs);font-weight:600;margin:1px 3px 1px 0}
+:root.dark .tag{color:var(--blue-400)}
+
+/* ---------- States ---------- */
+.state{padding:var(--space-12) var(--space-6);text-align:center;color:var(--text-secondary)}
+.state svg{width:40px;height:40px;color:var(--text-tertiary);stroke-width:1.4;margin-bottom:var(--space-3)}
+.state h3{margin:0 0 var(--space-2);font-size:var(--text-base);font-weight:600;color:var(--text-primary)}
+.state p{margin:0 0 var(--space-5);font-size:var(--text-sm)}
+
+/* ---------- Drawer / Modal ---------- */
+.scrim{position:fixed;inset:0;background:oklch(0% 0 0 / .45);z-index:1000;animation:fade var(--duration-normal) var(--ease-out-quart)}
+@keyframes fade{from{opacity:0}}
+.drawer{position:fixed;top:0;right:0;bottom:0;width:min(620px,100%);z-index:1001;background:var(--surface-raised);
+  border-left:1px solid var(--border-subtle);box-shadow:var(--shadow-elevated);display:flex;flex-direction:column;
+  animation:slide var(--duration-slow) var(--ease-out-expo)}
+@keyframes slide{from{transform:translateX(100%)}}
+.drawer-head{padding:var(--space-5) var(--space-5) var(--space-4);border-bottom:1px solid var(--border-subtle);
+  display:flex;align-items:flex-start;gap:var(--space-3)}
+.drawer-title{font-size:var(--text-lg);font-weight:650;letter-spacing:-.01em;margin:0;line-height:1.3;
+  display:flex;align-items:center;gap:var(--space-2);flex-wrap:wrap}
+.drawer-body{flex:1;overflow-y:auto;padding:var(--space-5)}
+.drawer-foot{padding:var(--space-4) var(--space-5);border-top:1px solid var(--border-subtle);display:flex;gap:var(--space-2);flex-wrap:wrap}
+.sec{margin-bottom:var(--space-6)}
+.sec-t{font-size:var(--text-2xs);font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--text-tertiary);
+  margin-bottom:var(--space-3);display:flex;align-items:center;gap:var(--space-2)}
+.sec-t::after{content:"";flex:1;height:1px;background:var(--border-subtle)}
+.kv{display:grid;grid-template-columns:96px 1fr;gap:var(--space-2) var(--space-3);font-size:var(--text-sm)}
+.kv dt{color:var(--text-secondary);font-size:var(--text-xs);padding-top:1px}
+.kv dd{margin:0;word-break:break-all}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:var(--space-3)}
+.f{display:flex;flex-direction:column;gap:var(--space-1);margin-bottom:var(--space-3)}
+.f label{font-size:var(--text-xs);color:var(--text-secondary);font-weight:500}
+.f .req::after{content:" *";color:var(--danger)}
+.modal{position:fixed;z-index:2001;top:50%;left:50%;transform:translate(-50%,-50%);width:min(560px,calc(100vw - 32px));
+  max-height:calc(100vh - 48px);background:var(--surface-raised);border:1px solid var(--border-subtle);
+  border-radius:var(--radius-lg);box-shadow:var(--shadow-elevated);display:flex;flex-direction:column;
+  animation:pop var(--duration-normal) var(--ease-out-expo)}
+@keyframes pop{from{opacity:0;transform:translate(-50%,-46%) scale(.98)}}
+.modal-head{padding:var(--space-5) var(--space-5) var(--space-3);font-size:var(--text-base);font-weight:650}
+.modal-body{padding:0 var(--space-5) var(--space-4);overflow-y:auto}
+.modal-foot{padding:var(--space-4) var(--space-5);border-top:1px solid var(--border-subtle);display:flex;justify-content:flex-end;gap:var(--space-2)}
+textarea.input{resize:vertical;min-height:66px;font-family:inherit}
+
+/* ---------- Toast ---------- */
+.toasts{position:fixed;top:var(--space-5);right:var(--space-5);z-index:3000;display:flex;flex-direction:column;gap:var(--space-2)}
+.toast{background:var(--surface-raised);border:1px solid var(--border-subtle);border-left:3px solid var(--accent);
+  border-radius:var(--radius-sm);box-shadow:var(--shadow-elevated);padding:10px var(--space-4);font-size:var(--text-sm);
+  min-width:220px;max-width:340px;animation:tin var(--duration-normal) var(--ease-out-expo)}
+@keyframes tin{from{opacity:0;transform:translateX(12px)}}
+.toast.ok{border-left-color:var(--success)}
+.toast.err{border-left-color:var(--danger)}
+.toast.warn{border-left-color:var(--warning)}
+
+/* ============================================================
+   DB-specific —— 资源管理视觉：左侧类型色条 + 大号数字 + hover 上浮
+   ============================================================ */
+.db-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:var(--space-4)}
+.db-card{background:var(--surface-raised);border:1px solid var(--border-subtle);border-left:3px solid var(--bar,var(--accent));
+  border-radius:var(--radius-lg);box-shadow:var(--shadow-card);padding:var(--space-4);cursor:pointer;position:relative;
+  transition:box-shadow var(--duration-fast),transform var(--duration-fast);
+  opacity:0;animation:cardIn .5s cubic-bezier(.16,1,.3,1) both;animation-delay:calc(var(--i,0)*.06s)}
+@keyframes cardIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
+.db-card:hover{box-shadow:var(--shadow-elevated);transform:translateY(-3px)}
+.db-top{display:flex;align-items:flex-start;justify-content:space-between;gap:var(--space-2);margin-bottom:var(--space-2)}
+.db-name{font-weight:650;font-size:var(--text-base);display:flex;align-items:center;gap:var(--space-2);flex-wrap:wrap}
+.db-type{display:inline-flex;align-items:center;gap:5px;padding:2px 8px;border-radius:var(--radius-xl);
+  font-size:var(--text-2xs);font-weight:600;background:color-mix(in srgb,var(--bar) 14%,transparent);color:var(--bar)}
+.db-type svg{width:13px;height:13px;stroke-width:2}
+.db-hero{display:flex;align-items:baseline;gap:6px;margin:var(--space-1) 0 var(--space-2)}
+.db-hero .num{font-size:var(--text-3xl);font-weight:700;letter-spacing:-.02em;line-height:1;font-family:var(--font-mono)}
+.db-hero .unit{font-size:var(--text-sm);color:var(--text-secondary);font-weight:500}
+.db-hero .lab{font-size:var(--text-2xs);color:var(--text-tertiary);margin-left:auto;text-transform:uppercase;letter-spacing:.06em}
+.db-metrics{display:grid;grid-template-columns:repeat(3,1fr);gap:var(--space-1) var(--space-3);margin-top:var(--space-2);
+  border-top:1px solid var(--border-subtle);padding-top:var(--space-3)}
+.db-metrics dt{font-size:var(--text-2xs);color:var(--text-secondary)}
+.db-metrics dd{margin:0;font-size:var(--text-sm);font-weight:600;font-family:var(--font-mono)}
+.db-foot{display:flex;align-items:center;gap:var(--space-2);margin-top:var(--space-3);font-size:var(--text-2xs);color:var(--text-tertiary);flex-wrap:wrap}
+.db-addr{font-family:var(--font-mono)}
+.db-ro{color:var(--success);font-weight:600}
+.db-ro::before{content:"● 只读";font-size:var(--text-2xs)}
+
+.kpi-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:var(--space-3);margin-bottom:var(--space-4)}
+.kpi{background:var(--surface-overlay);border:1px solid var(--border-subtle);border-radius:var(--radius-md);padding:var(--space-3) var(--space-4)}
+.kpi-k{font-size:var(--text-2xs);color:var(--text-secondary);font-weight:600;letter-spacing:.04em;text-transform:uppercase}
+.kpi-v{font-size:var(--text-xl);font-weight:700;font-family:var(--font-mono);margin-top:4px;letter-spacing:-.01em}
+.kpi-v small{font-size:var(--text-2xs);color:var(--text-secondary);font-weight:500;margin-left:2px}
+.kpi.warn .kpi-v{color:var(--warning)}
+.kpi.danger .kpi-v{color:var(--danger)}
+
+.chart-wrap{background:var(--surface-overlay);border:1px solid var(--border-subtle);border-radius:var(--radius-md);padding:var(--space-3) var(--space-4) var(--space-2)}
+.chart-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:var(--space-2);flex-wrap:wrap;gap:var(--space-2)}
+.chart-title{font-size:var(--text-sm);font-weight:600}
+.chart-svg{width:100%;height:200px;display:block}
+.conn-bar{display:flex;align-items:center;gap:var(--space-2);font-size:var(--text-xs);padding:var(--space-2) var(--space-3);
+  border-radius:var(--radius-sm);margin-bottom:var(--space-3);border:1px solid var(--border-subtle)}
+.conn-bar.ok{background:var(--success-subtle);color:var(--success);border-color:transparent}
+.conn-bar.err{background:var(--danger-subtle);color:var(--danger);border-color:transparent}
+.conn-bar svg{width:15px;height:15px;stroke-width:2}
+
+.alarm{display:flex;gap:var(--space-3);padding:var(--space-3) 0;border-bottom:1px solid var(--border-subtle)}
+.alarm:last-child{border-bottom:none}
+.alarm-ico{width:26px;height:26px;border-radius:50%;flex:0 0 26px;display:grid;place-items:center;background:var(--danger-subtle);color:var(--danger)}
+.alarm-ico svg{width:14px;height:14px;stroke-width:2.2}
+.alarm-h{font-size:var(--text-sm);font-weight:600}
+.alarm-m{font-size:var(--text-2xs);color:var(--text-tertiary);margin-top:1px}
+.alarm-x{font-size:var(--text-xs);color:var(--text-secondary);margin-top:2px}
+
+.map-layout{display:grid;grid-template-columns:1.3fr 1fr;gap:var(--space-4);align-items:start}
+.map-list .frow{display:grid;grid-template-columns:1fr 160px;gap:var(--space-2);align-items:center;
+  padding:var(--space-2) var(--space-3);border:1px solid var(--border-subtle);border-radius:var(--radius-sm);margin-bottom:var(--space-2);background:var(--surface-raised)}
+.map-field{font-family:var(--font-mono);font-size:var(--text-sm);font-weight:600}
+.map-ftype{font-size:var(--text-2xs);color:var(--text-tertiary);display:block;margin-top:1px}
+.map-slot{font-size:var(--text-xs)}
+.preview{background:var(--surface-overlay);border:1px solid var(--border-subtle);border-radius:var(--radius-md);padding:var(--space-4);position:sticky;top:var(--space-4)}
+.preview h4{margin:0 0 var(--space-3);font-size:var(--text-sm);font-weight:650}
+.dist{margin-bottom:var(--space-3)}
+.dist-top{display:flex;justify-content:space-between;font-size:var(--text-xs);margin-bottom:3px}
+.dist-top b{font-family:var(--font-mono)}
+.dist-track{height:8px;border-radius:99px;background:var(--surface-raised);overflow:hidden}
+.dist-fill{height:100%;border-radius:99px;background:var(--bar,var(--accent));transition:width .3s}
+
+.test-out{margin-top:var(--space-3);font-size:var(--text-xs);border-radius:var(--radius-sm);padding:var(--space-3);
+  display:none;align-items:flex-start;gap:8px}
+.test-out.show{display:flex}
+.test-out.ok{background:var(--success-subtle);color:var(--success)}
+.test-out.err{background:var(--danger-subtle);color:var(--danger)}
+.test-out svg{width:15px;height:15px;stroke-width:2;flex:0 0 15px;margin-top:1px}
+
+.hint{font-size:var(--text-2xs);color:var(--text-tertiary);margin-top:4px;line-height:1.5}
+.readonly-note{display:flex;align-items:center;gap:6px;font-size:var(--text-2xs);color:var(--success);
+  background:var(--success-subtle);border-radius:var(--radius-sm);padding:6px 10px;margin-bottom:var(--space-3)}
+
+/* ---------- 嵌入模式（主站内联挂载）：隐藏自带 chrome，复用主站外壳 ---------- */
+.res-embed-host .sidebar,
+html.embed .sidebar{display:none}
+.res-embed-host .topbar,
+html.embed .topbar{display:none}
+.res-embed-host .main,
+html.embed .main{padding:0}
+.res-embed-host .content,
+html.embed .content{padding:var(--space-5);max-width:none}
+#res-inline-root{height:100%;overflow:auto;background:var(--surface-root)}
+.res-embed-host .app{min-height:100%;height:100%}
+
+@media (max-width:1023px){
+  .sidebar{position:fixed;left:0;top:0;transform:translateX(-100%);transition:transform var(--duration-normal) var(--ease-out-quart)}
+  .sidebar.open{transform:translateX(0)}
+  .content{padding:var(--space-4)}
+  .stats{grid-template-columns:repeat(2,1fr)}
+}
+@media (max-width:767px){
+  .map-layout{grid-template-columns:1fr}
+  .preview{position:static}
+  .db-metrics{grid-template-columns:1fr 1fr}
+  .page-title{font-size:var(--text-xl)}
+  .stat-v{font-size:var(--text-2xl)}
+  .drawer{width:100%}
+  .grid2{grid-template-columns:1fr}
+}
+</style>
+</head>
+<body>
+<div class="app">
+  <aside class="sidebar" id="sidebar">
+    <div class="brand">
+      <img src="/brand-logo.png" alt="" onerror="this.style.display='none'"/>
+      <div><div class="brand-txt">智能监控平台</div><div class="brand-sub">CMDB</div></div>
+    </div>
+    <nav class="nav">
+      <div class="nav-label">监控中心</div>
+      <a class="nav-item" href="#"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M3 10.5 12 3l9 7.5V20a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/></svg>监控总览</a>
+      <a class="nav-item" href="#"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><rect x="2" y="3" width="20" height="8" rx="2"/><rect x="2" y="13" width="20" height="8" rx="2"/><path d="M6 7h.01M6 17h.01"/></svg>设备管理</a>
+      <a class="nav-item" href="#"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M3 12h4l3 8 4-16 3 8h4"/></svg>监控详情</a>
+      <a class="nav-item" href="#"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><ellipse cx="12" cy="5" rx="8" ry="3"/><path d="M4 5v6c0 1.7 3.6 3 8 3s8-1.3 8-3V5"/><path d="M4 11v6c0 1.7 3.6 3 8 3s8-1.3 8-3v-6"/></svg>数据库</a>
+      <a class="nav-item" href="#"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M18 8a6 6 0 1 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/></svg>告警日志</a>
+      <div class="nav-label">运营</div>
+      <a class="nav-item" href="#"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M5.6 18.4l2.1-2.1M16.3 7.7l2.1-2.1"/><circle cx="12" cy="12" r="3.2"/></svg>AI 分析</a>
+      <a class="nav-item" href="#"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M8 13h8M8 17h5"/></svg>数据报表</a>
+      <div class="nav-label">系统</div>
+      <a class="nav-item" href="#"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/></svg>账号管理</a>
+      <a class="nav-item" href="#"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-2.9 1.2 2 2 0 1 1-4 0 1.7 1.7 0 0 0-2.9-1.2l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1A1.7 1.7 0 0 0 4.6 15a2 2 0 1 1 0-4 1.7 1.7 0 0 0 1.2-2.9l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1A1.7 1.7 0 0 0 11.5 4a2 2 0 1 1 4 0 1.7 1.7 0 0 0 2.9 1.2l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0 1.2 2.9 2 2 0 1 1 0 4z"/></svg>通知设置</a>
+    </nav>
+  </aside>
+
+  <div class="main">
+    <header class="topbar">
+      <div class="crumb"><b>监控中心</b><span class="sep">/</span><span>数据库</span></div>
+      <div class="topbar-right">
+        <button class="icon-btn" id="btnTheme" title="切换主题">
+          <svg id="icoSun" viewBox="0 0 24 24" fill="none" stroke="currentColor"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>
+          <svg id="icoMoon" viewBox="0 0 24 24" fill="none" stroke="currentColor" style="display:none"><path d="M21 12.8A9 9 0 1 1 11.2 3 7 7 0 0 0 21 12.8z"/></svg>
+        </button>
+        <div class="who"><div class="avatar">A</div><div><div class="who-name">admin</div><div class="who-role">管理员</div></div></div>
+      </div>
+    </header>
+
+    <main class="content">
+      <div class="page-head">
+        <div>
+          <h1 class="page-title">数据库监控</h1>
+          <p class="page-desc">多类型数据库实例统一监控 · 只读采集 · 字段自动发现 · 指标模板可配</p>
+        </div>
+        <div class="spacer"></div>
+        <div class="seg" id="seg">
+          <button data-v="overview" class="active">实例总览</button>
+          <button data-v="mapping">字段映射配置</button>
+        </div>
+      </div>
+
+      <section id="viewOverview">
+        <section class="stats" id="stats"></section>
+        <div class="toolbar">
+          <div class="search">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+            <input class="input" id="q" type="search" placeholder="搜索实例名 / 地址 / 标签…" autocomplete="off"/>
+          </div>
+          <select class="select" id="fType"><option value="">全部类型</option></select>
+          <select class="select" id="fStatus"><option value="">全部状态</option><option value="online">在线</option><option value="exception">异常</option><option value="alerting">告警中</option><option value="offline">离线</option></select>
+          <div class="spacer"></div>
+          <button class="btn btn-primary" id="btnNew">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M12 5v14M5 12h14"/></svg>录入实例
+          </button>
+        </div>
+        <div class="db-grid" id="dbGrid"></div>
+      </section>
+
+      <section id="viewMapping" style="display:none">
+        <div class="toolbar">
+          <div class="search" style="max-width:300px">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+            <input class="input" id="mInst" type="text" value="es-test-122（Elasticsearch · 122.9.39.42:9200）" readonly style="color:var(--text-secondary)"/>
+          </div>
+          <div class="spacer"></div>
+          <span class="badge badge-info"><span class="dot" style="background:var(--info)"></span>自动发现自 _mapping</span>
+          <button class="btn btn-primary" id="btnSaveTpl">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><path d="M17 21v-8H7v8M7 3v5h8"/></svg>保存为模板
+          </button>
+        </div>
+        <div class="map-layout">
+          <div class="map-list card" style="padding:var(--space-4)">
+            <div class="sec-t" style="margin-bottom:var(--space-3)">自动发现字段（指派到取数槽位）</div>
+            <div id="mapRows"></div>
+            <p class="hint">未指派的字段不会被采集；同结构新索引可一键套用此模板。Mongo 走采样文档、关系库走 information_schema。</p>
+          </div>
+          <div class="preview card">
+            <h4>实时预览 · 状态码分布</h4>
+            <div id="distStatus"></div>
+            <h4 style="margin-top:var(--space-4)">实时预览 · 等级分布</h4>
+            <div id="distLevel"></div>
+            <p class="hint" style="margin-top:var(--space-4)">预览数据取自最近 1 小时采样聚合，保存模板后正式进入采集管线。</p>
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+</div>
+
+<div class="toasts" id="toasts"></div>
+<div id="layerHost"></div>
+
+<script>
+(function(){
+'use strict';
+function $(s){return document.querySelector(s);}
+function esc(v){if(v==null)return '';return String(v).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];});}
+
+/* ===================== 类型定义 ===================== */
+var TYPES = {
+  mysql:        { t:'MySQL',        color:'var(--blue-600)',  icon:'<ellipse cx="12" cy="6" rx="7" ry="3"/><path d="M5 6v12c0 1.7 3.1 3 7 3s7-1.3 7-3V6"/><path d="M5 12c0 1.7 3.1 3 7 3s7-1.3 7-3"/>', hero:'连接数', unit:'conn' },
+  postgresql:   { t:'PostgreSQL',   color:'var(--purple-600)',icon:'<ellipse cx="12" cy="6" rx="7" ry="3"/><path d="M5 6v12c0 1.7 3.1 3 7 3s7-1.3 7-3V6"/><path d="M5 12c0 1.7 3.1 3 7 3s7-1.3 7-3"/>', hero:'QPS', unit:'q/s' },
+  mongodb:      { t:'MongoDB',      color:'var(--green-600)', icon:'<ellipse cx="12" cy="6" rx="7" ry="3"/><path d="M5 6v12c0 1.7 3.1 3 7 3s7-1.3 7-3V6"/><path d="M5 12c0 1.7 3.1 3 7 3s7-1.3 7-3"/>', hero:'连接数', unit:'conn' },
+  redis:        { t:'Redis',        color:'var(--coral-600)', icon:'<rect x="3" y="4" width="18" height="7" rx="2"/><rect x="3" y="13" width="18" height="7" rx="2"/><path d="M7 7.5h.01M7 16.5h.01"/>', hero:'内存使用率', unit:'%' },
+  elasticsearch:{ t:'Elasticsearch',color:'var(--amber-600)', icon:'<circle cx="12" cy="12" r="9"/><path d="M12 3v18M3 12h18"/>', hero:'查询延迟', unit:'ms' },
+  clickhouse:   { t:'ClickHouse',   color:'var(--blue-400)',  icon:'<ellipse cx="12" cy="6" rx="7" ry="3"/><path d="M5 6v12c0 1.7 3.1 3 7 3s7-1.3 7-3V6"/><path d="M5 12c0 1.7 3.1 3 7 3s7-1.3 7-3"/>', hero:'写入速率', unit:'r/s' }
+};
+var STATUS = {
+  online:   { t:'在线',   cls:'badge-success', dot:'var(--success)' },
+  exception:{ t:'异常',   cls:'badge-warning', dot:'var(--warning)' },
+  alerting: { t:'告警中', cls:'badge-danger',  dot:'var(--danger)' },
+  offline:  { t:'离线',   cls:'badge-neutral', dot:'var(--text-tertiary)' }
+};
+
+/* ===================== 演示数据（后端 /api/dbs 就绪后由接口覆盖） ===================== */
+var ROWS = [
+  { id:1, name:'mysql-prod', type:'mysql', host:'192.168.1.66', port:3306, account:'monitor', status:'online',
+    hero:142, metrics:{ '查询延迟':'3.2 ms', '慢查询':'2 /min', '连接使用率':'48 %' }, addr:'192.168.1.66:3306', tags:['生产','核心交易'], last:'12s 前' },
+  { id:2, name:'mysql-monitor', type:'mysql', host:'127.0.0.1', port:3306, account:'monitor_ro', status:'online', readonly:true,
+    hero:18, metrics:{ '查询延迟':'0.8 ms', '慢查询':'0 /min', '连接使用率':'6 %' }, addr:'127.0.0.1:3306', tags:['本机','监控库'], last:'8s 前' },
+  { id:3, name:'es-test-122', type:'elasticsearch', host:'122.9.39.42', port:9200, account:'elastic', status:'online', readonly:true,
+    hero:42, metrics:{ '索引数':'37', '集群状态':'green', '写入速率':'1.2 k/s' }, addr:'122.9.39.42:9200', tags:['测试环境','只读'], last:'15s 前' },
+  { id:4, name:'redis-cache', type:'redis', host:'192.168.1.30', port:6379, account:'monitor', status:'alerting',
+    hero:91, metrics:{ '命中率':'96.4 %', '内存':'7.3 /8 GB', 'evicted':'12 /min' }, addr:'192.168.1.30:6379', tags:['缓存','高负载'], last:'5s 前' },
+  { id:5, name:'mongo-log', type:'mongodb', host:'192.168.1.40', port:27017, account:'monitor', status:'exception',
+    hero:0, metrics:{ '连接数':'—', '主从延迟':'—', 'oplog':'落后' }, addr:'192.168.1.40:27017', tags:['日志'], last:'故障 2m' },
+  { id:6, name:'pg-report', type:'postgresql', host:'192.168.1.50', port:5432, account:'monitor', status:'offline',
+    hero:0, metrics:{ 'QPS':'—', '连接数':'—', '热表':'—' }, addr:'192.168.1.50:5432', tags:['报表'], last:'离线 18m' }
+];
+
+/* 后端实例 → 展示模型（字段缺失时回退演示值） */
+function mapApi(arr){
+  return arr.map(function(r, i){
+    var ty=r.type||'mysql';
+    var m=(r.metrics&&typeof r.metrics==='object')?r.metrics:{};
+    return {
+      id:r.id||(i+1), name:r.name||('实例'+i), type:ty, host:r.host||'', port:r.port||'',
+      account:r.account||'', status:r.status||'online', readonly:!!r.readonly,
+      hero: (typeof r.hero==='number')?r.hero:(m.connections!=null?m.connections:(m.qps!=null?m.qps:0)),
+      metrics: m && Object.keys(m).length ? m : { '连接数':'—', '查询延迟':'—', '连接使用率':'—' },
+      addr: (r.host||'')+':'+(r.port||''), tags: r.tags||[], last: r.last_error ? ('错误 '+r.last_error) : '—'
+    };
+  });
+}
+
+/* 优先拉取真实接口，失败（后端未就绪）则回落演示数据 */
+var DATA = ROWS;
+function loadInstances(){
+  var TOKEN = localStorage.getItem('token') || '';
+  var hd = {'Content-Type':'application/json'}; if (TOKEN) hd.Authorization = 'Bearer ' + TOKEN;
+  fetch('/api/dbs/instances', { headers: hd, cache:'no-store' })
+    .then(function(r){ return r.ok ? r.json() : null; })
+    .then(function(j){
+      var arr = j && (j.data || j);
+      if (Array.isArray(arr) && arr.length) { DATA = mapApi(arr); }
+      renderAll();
+    })
+    .catch(function(){ renderAll(); });
+}
+
+/* ===================== 主题 ===================== */
+function applyTheme(){
+  var t = localStorage.getItem('dbTheme');
+  var dark = (t==='dark') || (!t && window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches);
+  var s=$('#icoSun'), m=$('#icoMoon');
+  if(s) s.style.display = dark?'none':'';
+  if(m) m.style.display = dark?'':'none';
+  document.documentElement.classList.toggle('dark', dark);
+}
+applyTheme();
+$('#btnTheme').addEventListener('click', function(){
+  var dark = document.documentElement.classList.contains('dark');
+  localStorage.setItem('dbTheme', dark?'light':'dark'); applyTheme();
+});
+
+/* ===================== Toast ===================== */
+function toast(msg, kind){
+  var el=document.createElement('div'); el.className='toast '+(kind||''); el.textContent=msg;
+  $('#toasts').appendChild(el);
+  setTimeout(function(){ el.style.transition='opacity .2s,transform .2s'; el.style.opacity='0'; el.style.transform='translateX(12px)';
+    setTimeout(function(){el.remove();},220); },2600);
+}
+
+/* ===================== 统计卡 ===================== */
+var IC_DB='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><ellipse cx="12" cy="5" rx="8" ry="3"/><path d="M4 5v14c0 1.7 3.6 3 8 3s8-1.3 8-3V5"/><path d="M4 12c0 1.7 3.6 3 8 3s8-1.3 8-3"/></svg>';
+var IC_ON='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M12 3v9"/><path d="M6.5 7a8 8 0 1 0 11 0"/></svg>';
+var IC_EX='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M10.3 3.9 2.4 18a2 2 0 0 0 1.7 3h15.8a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/><path d="M12 9v4M12 17h.01"/></svg>';
+var IC_AL='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M18 8a6 6 0 1 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/></svg>';
+function renderStats(){
+  var on=0, ex=0, al=0;
+  DATA.forEach(function(r){ if(r.status==='online')on++; else if(r.status==='exception')ex++; else if(r.status==='alerting')al++; });
+  var cards=[
+    { k:'实例总数', v:DATA.length, ico:IC_DB, bar:'var(--accent)', x:'在监控实例' },
+    { k:'在线',     v:on,          ico:IC_ON, bar:'var(--success)', x:'正常采集' },
+    { k:'异常',     v:ex,          ico:IC_EX, bar:'var(--warning)', x:'需排查' },
+    { k:'告警中',   v:al,          ico:IC_AL, bar:'var(--danger)',  x:'触发阈值' }
+  ];
+  $('#stats').innerHTML = cards.map(function(c,i){
+    return '<div class="stat" style="--bar:'+c.bar+';--i:'+i+'">'
+      +'<span class="stat-ico" style="color:'+c.bar+'">'+c.ico+'</span>'
+      +'<div class="stat-k">'+c.k+'</div><div class="stat-v mono">'+c.v+'</div>'
+      +'<div class="stat-x">'+c.x+'</div></div>';
+  }).join('');
+}
+
+/* ===================== 筛选器 ===================== */
+function fillTypeFilter(){
+  var sel=$('#fType'), cur=sel.value, vals=[];
+  DATA.forEach(function(r){ if(vals.indexOf(r.type)<0) vals.push(r.type); });
+  sel.innerHTML='<option value="">全部类型</option>'+vals.map(function(v){
+    return '<option value="'+v+'"'+(v===cur?' selected':'')+'>'+esc(TYPES[v]?TYPES[v].t:v)+'</option>';
+  }).join('');
+}
+
+/* ===================== 实例卡片网格 ===================== */
+function statusBadge(s){ var m=STATUS[s]||{t:s,cls:'badge-neutral',dot:'var(--text-tertiary)'};
+  return '<span class="badge '+m.cls+'"><span class="dot" style="background:'+m.dot+'"></span>'+esc(m.t)+'</span>'; }
+function computeView(){
+  var q=$('#q').value.trim().toLowerCase(), ty=$('#fType').value, st=$('#fStatus').value;
+  return DATA.filter(function(r){
+    if(ty && r.type!==ty) return false;
+    if(st && r.status!==st) return false;
+    if(!q) return true;
+    return (r.name+' '+r.addr+' '+(r.tags||[]).join(' ')).toLowerCase().indexOf(q)>=0;
+  });
+}
+function renderGrid(){
+  var list=computeView();
+  if(!list.length){ $('#dbGrid').innerHTML='<div class="state" style="grid-column:1/-1"><h3>没有匹配的实例</h3><p>试试调整搜索或筛选条件</p></div>'; return; }
+  $('#dbGrid').innerHTML = list.map(function(r,i){
+    var ty=TYPES[r.type]||{t:r.type,color:'var(--accent)',icon:'',hero:'指标',unit:''};
+    var mets=Object.keys(r.metrics||{}).map(function(k){ return '<dl><dt>'+esc(k)+'</dt><dd>'+esc(r.metrics[k])+'</dd></dl>'; }).join('');
+    return '<div class="db-card" data-id="'+r.id+'" style="--bar:'+ty.color+';--i:'+i+'">'
+      +'<div class="db-top"><div class="db-name">'+esc(r.name)+statusBadge(r.status)+'</div>'
+      +'<span class="db-type" style="--bar:'+ty.color+'"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor">'+ty.icon+'</svg>'+esc(ty.t)+'</span></div>'
+      +'<div class="db-hero"><span class="num">'+esc(r.hero)+'</span><span class="unit">'+esc(ty.unit)+'</span><span class="lab">'+esc(ty.hero)+'</span></div>'
+      +'<dl class="db-metrics">'+mets+'</dl>'
+      +'<div class="db-foot"><span class="db-addr">'+esc(r.addr)+'</span>'
+        + (r.readonly?'<span class="db-ro"></span>':'')
+        + (r.tags||[]).map(function(t){return '<span class="tag">'+esc(t)+'</span>';}).join('')
+        + '<span style="margin-left:auto">'+esc(r.last)+'</span></div>'
+      +'</div>';
+  }).join('');
+}
+
+/* ===================== 6.2 实例详情抽屉 ===================== */
+function genSeries(n, base, amp, seed){
+  var a=[]; for(var i=0;i<n;i++){ a.push(Math.max(0, base + Math.sin(i/2.3+seed)*amp + (Math.random()-0.5)*amp*0.6)); } return a;
+}
+function areaPath(data, w, h, pad){
+  var max=Math.max.apply(null,data)*1.15||1, min=0;
+  var pts=data.map(function(v,i){ var x=pad+(w-2*pad)*i/(data.length-1); var y=h-pad-(h-2*pad)*(v-min)/(max-min); return [x,y]; });
+  var d='M'+pts[0][0]+','+pts[0][1];
+  for(var i=1;i<pts.length;i++){ var p0=pts[i-1],p1=pts[i]; var cx=(p0[0]+p1[0])/2; d+=' C'+cx+','+p0[1]+' '+cx+','+p1[1]+' '+p1[0]+','+p1[1]; }
+  var area=d+' L'+pts[pts.length-1][0]+','+(h-pad)+' L'+pts[0][0]+','+(h-pad)+' Z';
+  return { line:d, area:area };
+}
+function drawChart(svg, data, color){
+  var w=520,h=200,pad=12; var p=areaPath(data,w,h,pad);
+  var gid='g'+Math.random().toString(36).slice(2,7);
+  svg.setAttribute('viewBox','0 0 '+w+' '+h);
+  svg.innerHTML='<defs><linearGradient id="'+gid+'" x1="0" y1="0" x2="0" y2="1">'
+    +'<stop offset="0%" stop-color="'+color+'" stop-opacity="0.28"/>'
+    +'<stop offset="100%" stop-color="'+color+'" stop-opacity="0"/></linearGradient></defs>'
+    +'<path d="'+p.area+'" fill="url(#'+gid+')"/>'
+    +'<path d="'+p.line+'" fill="none" stroke="'+color+'" stroke-width="2" stroke-linecap="round"/>';
+}
+var RANGES=['1h','24h','7d'];
+function openDetail(id){
+  var r=null; DATA.forEach(function(x){ if(x.id===id) r=x; }); if(!r) return;
+  var ty=TYPES[r.type]||{color:'var(--accent)',t:r.type,hero:'指标',unit:''};
+  var offline = (r.status==='offline' || r.status==='exception');
+  var connHtml = offline
+    ? '<div class="conn-bar err"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><circle cx="12" cy="12" r="9"/><path d="M12 8v5M12 16h.01"/></svg><div><b>连通异常</b> · 最近错误：'+(r.status==='offline'?'连接拒绝 (ECONNREFUSED)':'认证失败 / 主从延迟超阈值')+'</div></div>'
+    : '<div class="conn-bar ok"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M20 6 9 17l-5-5"/></svg><div><b>连通正常</b> · 采集间隔 15s · 只读账号 '+esc(r.account)+ (r.readonly?' · 测试环境只读':'') +'</div></div>';
+
+  var kpis = [
+    { k:'连接数', v:r.hero },
+    { k:'查询延迟', v:r.metrics['查询延迟']||'—' },
+    { k:'慢查询', v:r.metrics['慢查询']||'—', cls:(r.metrics['慢查询']||'').indexOf('/min')>0 && parseInt(r.metrics['慢查询'])>10?'warn':'' },
+    { k:'连接使用率', v:r.metrics['连接使用率']||'—', cls:(r.metrics['连接使用率']||'').indexOf('%')>0 && parseInt(r.metrics['连接使用率'])>85?'danger':'' }
+  ];
+  var kpiHtml = kpis.map(function(k){ return '<div class="kpi '+(k.cls||'')+'"><div class="kpi-k">'+esc(k.k)+'</div><div class="kpi-v">'+esc(k.v)+'</div></div>'; }).join('');
+
+  var alarms = (r.status==='alerting')
+    ? [ {t:'内存使用率超阈值',m:'redis-cache 内存使用率 91% 超过 85% 告警线',time:'2 分钟前',lv:'danger'},
+        {t:'evicted 键增速异常',m:'近 5 分钟 evicted 12 keys/min',time:'5 分钟前',lv:'warning'} ]
+    : (r.status==='exception')
+    ? [ {t:'采集失败',m:'mongo-log 连续 2 次连通性探测失败',time:'2 分钟前',lv:'danger'} ]
+    : [ {t:'无活动告警',m:'当前实例处于健康状态',time:'—',lv:'ok'} ];
+  var alarmHtml = alarms.map(function(a){
+    var ic = a.lv==='ok' ? '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M20 6 9 17l-5-5"/></svg>' : '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M18 8a6 6 0 1 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/></svg>';
+    return '<div class="alarm"><div class="alarm-ico" style="background:'+(a.lv==='ok'?'var(--success-subtle)':'var(--danger-subtle)')+';color:'+(a.lv==='ok'?'var(--success)':'var(--danger)')+'">'+ic+'</div>'
+      +'<div style="flex:1"><div class="alarm-h">'+esc(a.t)+'</div><div class="alarm-x">'+esc(a.m)+'</div><div class="alarm-m">'+esc(a.time)+'</div></div></div>';
+  }).join('');
+
+  var html='<div class="scrim" data-close="1"></div><aside class="drawer">'
+    +'<div class="drawer-head"><div style="flex:1;min-width:0"><h2 class="drawer-title">'+esc(r.name)+statusBadge(r.status)+'</h2>'
+      +'<div class="muted" style="font-size:var(--text-xs);margin-top:2px">'+esc(ty.t)+' · '+esc(r.addr)+'</div></div>'
+      +'<button class="icon-btn" data-close="1"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M18 6 6 18M6 6l12 12"/></svg></button></div>'
+    +'<div class="drawer-body">'
+      + connHtml
+      +'<div class="sec"><div class="sec-t">关键指标</div><div class="kpi-row">'+kpiHtml+'</div></div>'
+      +'<div class="sec"><div class="sec-t">指标趋势</div>'
+        +'<div class="chart-wrap"><div class="chart-head"><span class="chart-title">'+esc(ty.hero)+'</span>'
+          +'<div class="seg" data-chart="1"><button data-r="1h" class="active">1h</button><button data-r="24h">24h</button><button data-r="7d">7d</button></div></div>'
+          +'<svg class="chart-svg" id="chartSvg"></svg></div></div>'
+      +'<div class="sec"><div class="sec-t">告警记录</div>'+alarmHtml+'</div>'
+      +'<div class="sec"><div class="sec-t">基本信息</div><dl class="kv">'
+        +'<dt>类型</dt><dd>'+esc(ty.t)+'</dd>'
+        +'<dt>地址</dt><dd class="mono">'+esc(r.addr)+'</dd>'
+        +'<dt>账号</dt><dd class="mono">'+esc(r.account)+(r.readonly?'（只读）':'')+'</dd>'
+        +'<dt>标签</dt><dd>'+(r.tags||[]).map(function(t){return '<span class="tag">'+esc(t)+'</span>';}).join('')+'</dd>'
+        +'<dt>最近采集</dt><dd class="muted mono">'+esc(r.last)+'</dd>'
+      +'</dl></div>'
+    +'</div>'
+    +'<div class="drawer-foot">'
+      +'<button class="btn btn-secondary" id="dEdit">编辑</button><div class="spacer"></div><button class="btn btn-danger" id="dDel">删除</button>'
+    +'</div></aside>';
+  $('#layerHost').innerHTML=html;
+
+  var svg=$('#chartSvg');
+  var chartSeq=0;
+  function redraw(range){
+    var reqId=++chartSeq;
+    var n = range==='1h'?60:range==='24h'?96:84;
+    var amp = range==='1h'?20:range==='24h'?45:80;
+    drawChart(svg, genSeries(n, r.hero||40, amp, r.id), ty.color); // 立即画合成占位，真实数据回来覆盖
+    var tk = localStorage.getItem('token') || '';
+    var hd = {'Content-Type':'application/json'}; if (tk) hd.Authorization='Bearer '+tk;
+    fetch('/api/dbs/'+r.id+'/metrics?range='+encodeURIComponent(range), { headers: hd, cache:'no-store' })
+      .then(function(res){ return res.ok ? res.json() : Promise.reject(); })
+      .then(function(j){
+        if (reqId!==chartSeq) return;                 // 已被更新的范围切换覆盖
+        if (!j || j.code!==0 || !j.series || !j.series.length) return; // 无真实数据则保留占位图
+        var data=j.series.map(function(s){ return (s.value==null?0:Number(s.value)); });
+        drawChart(svg, data, ty.color);
+      })
+      .catch(function(){ /* 真实数据缺失时保留合成占位图 */ });
+  }
+  redraw('1h');
+  $('#layerHost').querySelectorAll('[data-chart="1"] button').forEach(function(b){
+    b.addEventListener('click', function(){
+      $('#layerHost').querySelectorAll('[data-chart="1"] button').forEach(function(x){x.classList.remove('active');});
+      b.classList.add('active'); redraw(b.dataset.r);
+    });
+  });
+  var de=$('#dEdit'); if(de) de.onclick=function(){ closeLayer(); openEdit(r); };
+  var dd=$('#dDel'); if(dd) dd.onclick=function(){ toast('演示稿：删除操作需二次确认弹窗','warn'); };
+}
+
+/* ===================== 6.3 字段映射 ===================== */
+var MAP_FIELDS = [
+  { f:'@timestamp', t:'date',    slot:'time' },
+  { f:'status',    t:'keyword', slot:'status' },
+  { f:'level',     t:'keyword', slot:'level' },
+  { f:'latency',   t:'double',  slot:'latency' },
+  { f:'service',   t:'keyword', slot:'group' },
+  { f:'host',      t:'keyword', slot:'' },
+  { f:'message',   t:'text',    slot:'' },
+  { f:'trace_id',  t:'keyword', slot:'' }
+];
+var SLOTS=[
+  { v:'time',  t:'时间字段' },
+  { v:'status',t:'状态码字段' },
+  { v:'level', t:'等级字段' },
+  { v:'latency',t:'耗时字段' },
+  { v:'group', t:'分组维度' },
+  { v:'',      t:'忽略（不采集）' }
+];
+function renderMapping(){
+  $('#mapRows').innerHTML = MAP_FIELDS.map(function(x){
+    var opts=SLOTS.map(function(s){ return '<option value="'+s.v+'"'+(x.slot===s.v?' selected':'')+'>'+s.t+'</option>'; }).join('');
+    return '<div class="frow"><div><span class="map-field">'+esc(x.f)+'</span><span class="map-ftype">'+esc(x.t)+'</span></div>'
+      +'<select class="select map-slot" data-f="'+esc(x.f)+'">'+opts+'</select></div>';
+  }).join('');
+  $('#mapRows').querySelectorAll('.map-slot').forEach(function(s){
+    s.addEventListener('change', function(){ var f=MAP_FIELDS.filter(function(x){return x.f===s.dataset.f;})[0]; if(f) f.slot=s.value; });
+  });
+  var stDist=[{k:'200',v:92,c:'var(--success)'},{k:'404',v:5,c:'var(--warning)'},{k:'500',v:3,c:'var(--danger)'}];
+  $('#distStatus').innerHTML = stDist.map(function(d){
+    return '<div class="dist"><div class="dist-top"><span>'+d.k+'</span><b>'+d.v+'%</b></div>'
+      +'<div class="dist-track"><div class="dist-fill" style="width:'+d.v+'%;--bar:'+d.c+'"></div></div></div>';
+  }).join('');
+  var lvDist=[{k:'INFO',v:74,c:'var(--blue-600)'},{k:'WARN',v:18,c:'var(--warning)'},{k:'ERROR',v:8,c:'var(--danger)'}];
+  $('#distLevel').innerHTML = lvDist.map(function(d){
+    return '<div class="dist"><div class="dist-top"><span>'+d.k+'</span><b>'+d.v+'%</b></div>'
+      +'<div class="dist-track"><div class="dist-fill" style="width:'+d.v+'%;--bar:'+d.c+'"></div></div></div>';
+  }).join('');
+}
+
+/* ===================== 6.4 录入 / 编辑抽屉 ===================== */
+function openEdit(r){
+  var isNew=!r;
+  var d=r||{ name:'', type:'mysql', host:'', port:3306, account:'monitor_ro', password:'', params:'', template:'', tags:'' };
+  var typeOpts=Object.keys(TYPES).map(function(k){ return '<option value="'+k+'"'+(d.type===k?' selected':'')+'>'+esc(TYPES[k].t)+'</option>'; }).join('');
+  var tplOpts=['默认关系库模板','ES 日志模板','Redis 缓存模板','Mongo 文档模板'].map(function(t){ return '<option value="'+t+'"'+(d.template===t?' selected':'')+'>'+esc(t)+'</option>'; }).join('');
+  var html='<div class="scrim" data-close="1"></div><div class="modal" style="width:min(560px,calc(100vw - 32px));max-height:calc(100vh - 48px)">'
+    +'<div class="modal-head">'+(isNew?'录入数据库实例':'编辑实例 · '+esc(d.name))+'<button class="icon-btn" data-close="1" style="float:right"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M18 6 6 18M6 6l12 12"/></svg></button></div>'
+    +'<div class="modal-body" style="max-height:calc(100vh - 200px)">'
+      + (isNew?'<div class="readonly-note"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>采集端一律只读：请填<b>只读账号</b>，不授予写 / DDL 权限。密码加密存储，接口不回显。</div>':'')
+      +'<div class="f"><label class="req">实例名</label><input class="input" id="eName" value="'+esc(d.name)+'" placeholder="如 mysql-prod"/></div>'
+      +'<div class="grid2"><div class="f"><label class="req">类型</label><select class="input" id="eType">'+typeOpts+'</select></div>'
+        +'<div class="f"><label class="req">端口</label><input class="input mono" id="ePort" type="number" value="'+esc(d.port||'')+'"/></div></div>'
+      +'<div class="f"><label class="req">主机</label><input class="input mono" id="eHost" value="'+esc(d.host||'')+'" placeholder="如 192.168.1.66 或 127.0.0.1"/></div>'
+      +'<div class="grid2"><div class="f"><label class="req">账号</label><input class="input" id="eAccount" value="'+esc(d.account||'')+'" placeholder="只读账号"/></div>'
+        +'<div class="f"><label>密码'+(isNew?'':'（留空=不改）')+'</label><input class="input" id="ePass" type="password" placeholder="'+(isNew?'••••••':'留空则不修改')+'"/></div></div>'
+      +'<div class="f"><label>类型专属参数</label><input class="input mono" id="eParams" value="'+esc(d.params||'')+'" placeholder="ES: index=log-* ｜ MySQL: connect_timeout=5"/></div>'
+      +'<div class="grid2"><div class="f"><label>指标模板</label><select class="input" id="eTpl">'+tplOpts+'</select></div>'
+        +'<div class="f"><label>标签</label><input class="input" id="eTags" value="'+esc((d.tags||[]).join(', '))+'" placeholder="逗号分隔"/></div></div>'
+      +'<div class="test-out" id="testOut"></div>'
+    +'</div>'
+    +'<div class="modal-foot"><button class="btn btn-secondary" id="eTest">测试连接</button><div class="spacer"></div>'
+      +'<button class="btn btn-secondary" data-close="1">取消</button><button class="btn btn-primary" id="eSave">'+(isNew?'创建':'保存')+'</button></div></div>';
+  $('#layerHost').innerHTML=html;
+
+  $('#eTest').onclick=function(){
+    var host=$('#eHost').value.trim(), port=$('#ePort').value.trim(), ac=$('#eAccount').value.trim();
+    var out=$('#testOut');
+    if(!host||!port||!ac){ out.className='test-out show err'; out.innerHTML='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><circle cx="12" cy="12" r="9"/><path d="M12 8v5M12 16h.01"/></svg><div>请先填写主机、端口、账号后再测试。</div>'; return; }
+    out.className='test-out show ok'; out.innerHTML='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M20 6 9 17l-5-5"/></svg><div><b>连接成功</b> · '+esc(host+':'+port)+' 认证通过（只读探测，未执行任何写操作）。</div>';
+    toast('连通性测试通过','ok');
+  };
+  $('#eSave').onclick=function(){
+    var name=$('#eName').value.trim();
+    if(!name){ toast('实例名不能为空','warn'); return; }
+    toast(isNew?'实例已录入（演示稿）':'修改已保存（演示稿）','ok');
+    closeLayer();
+  };
+}
+
+/* ===================== 视图切换 ===================== */
+$('#seg').querySelectorAll('button').forEach(function(b){
+  b.addEventListener('click', function(){
+    $('#seg').querySelectorAll('button').forEach(function(x){x.classList.remove('active');});
+    b.classList.add('active');
+    var v=b.dataset.v;
+    $('#viewOverview').style.display = v==='overview'?'':'none';
+    $('#viewMapping').style.display  = v==='mapping'?'':'none';
+    if(v==='mapping') renderMapping();
+  });
+});
+function closeLayer(){ $('#layerHost').innerHTML=''; }
+document.addEventListener('keydown', function(e){ if(e.key==='Escape') closeLayer(); });
+document.addEventListener('click', function(e){ if(e.target.closest('[data-close]')) closeLayer(); });
+
+$('#dbGrid').addEventListener('click', function(e){ var c=e.target.closest('.db-card'); if(c) openDetail(+c.dataset.id); });
+$('#q').addEventListener('input', renderGrid);
+$('#fType').addEventListener('change', renderGrid);
+$('#fStatus').addEventListener('change', renderGrid);
+$('#btnNew').addEventListener('click', function(){ openEdit(null); });
+$('#btnSaveTpl').addEventListener('click', function(){ toast('字段映射模板已保存（演示稿）','ok'); });
+
+function renderAll(){ renderStats(); fillTypeFilter(); renderGrid(); }
+/* 启动：尝试拉真实数据，失败则用演示数据（后端 /api/dbs 就绪后自动切换） */
+loadInstances();
+})();
+</script>
+</body>
+</html>

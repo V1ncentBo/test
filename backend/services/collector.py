@@ -478,6 +478,54 @@ class MetricsService:
             print(f"[MetricsService] Query range error: {e}")
             return {}
 
+    def write_db_metrics(self, instance_id: int, db_type: str, fields: dict) -> bool:
+        """写入数据库实例监控指标(db_metrics)。tag: instance_id + type。只读采集结果落库。"""
+        try:
+            iid = str(instance_id)
+            safe_type = str(db_type).replace(" ", "\\ ").replace(",", "\\,").replace("=", "\\=")
+            flds = []
+            for k, v in fields.items():
+                if v is None or isinstance(v, bool):
+                    continue
+                if isinstance(v, int):
+                    flds.append(f"{k}={int(v)}i")
+                elif isinstance(v, float):
+                    flds.append(f"{k}={float(v)}")
+                else:
+                    safe = str(v).replace(" ", "\\ ").replace(",", "\\,").replace("=", "\\=")
+                    flds.append(f'{k}="{safe}"')
+            if not flds:
+                return False
+            line = f"db_metrics,instance_id={iid},type={safe_type} " + ",".join(flds)
+            self.write_api.write(INFLUXDB_BUCKET, INFLUXDB_ORG, line)
+            return True
+        except Exception as e:
+            body = getattr(e, "body", "") or ""
+            print(f"[MetricsService] DB metrics write error: {e!r} | body={body} | line={line}")
+            return False
+
+    def query_db_history(self, instance_id: int, field: str, start: str = "-1h") -> list:
+        """查询某数据库实例某指标的历史曲线(db_metrics)。返回 [{time, value}]。"""
+        query = f'''from(bucket: "{INFLUXDB_BUCKET}")
+|> range(start: {start})
+|> filter(fn: (r) => r["_measurement"] == "db_metrics")
+|> filter(fn: (r) => r["instance_id"] == "{instance_id}")
+|> filter(fn: (r) => r["_field"] == "{field}")
+|> aggregateWindow(every: 1m, fn: mean, createEmpty: false)'''
+        try:
+            result = self.query_api.query(query=query)
+            points = []
+            for table in result:
+                for record in table.records:
+                    points.append({
+                        "time": record.get_time().isoformat(),
+                        "value": round(record.get_value() or 0, 2)
+                    })
+            return points
+        except Exception as e:
+            print(f"[MetricsService] Query DB history error: {e}")
+            return []
+
     def close(self):
         self.client.close()
 

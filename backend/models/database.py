@@ -135,11 +135,35 @@ class ReportRecord(Base):
     created_at = Column(DateTime, default=datetime.now, index=True, comment="生成时间")
 
 
+class DbInstance(Base):
+    """数据库实例监控表 — 只读采集，密码 Fernet 加密存储。"""
+    __tablename__ = "db_instances"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    name = Column(String(128), nullable=False, unique=True, index=True, comment="实例名称")
+    type = Column(String(32), nullable=False, default="mysql", comment="类型: mysql/postgresql/mongodb/redis/elasticsearch/clickhouse")
+    host = Column(String(128), nullable=False, comment="主机地址")
+    port = Column(Integer, default=3306, comment="端口")
+    account = Column(String(128), default="", comment="监控账号")
+    password_enc = Column(Text, default="", comment="密码(Fernet加密)")
+    readonly = Column(Boolean, default=True, comment="是否强制只读")
+    enabled = Column(Boolean, default=True, comment="是否纳入采集")
+    tags = Column(String(256), default="", comment="标签逗号分隔")
+    status = Column(String(16), default="unknown", comment="在线状态")
+    last_metrics = Column(Text, default="{}", comment="最近一次指标JSON")
+    last_error = Column(Text, default="", comment="最近一次错误信息")
+    extra_params = Column(Text, default="{}", comment="类型相关扩展参数JSON")
+    last_seen = Column(DateTime, nullable=True, comment="最近采集时间")
+    created_at = Column(DateTime, default=datetime.now, comment="创建时间")
+    updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now, comment="更新时间")
+
+
 def init_db():
     """初始化数据库表"""
     Base.metadata.create_all(bind=engine)
     ensure_pve_columns()
     ensure_user_columns()
+    ensure_db_columns()
 
 
 def ensure_user_columns():
@@ -182,6 +206,28 @@ def ensure_pve_columns():
                     print(f"[ensure] added column machine_info.{col}")
     except Exception as e:
         print(f"[ensure] pve columns error: {e}")
+
+
+def ensure_db_columns():
+    """兼容已部署环境：db_instances 表可能已存在但缺少扩展列，ALTER 补齐。"""
+    cols_to_add = [
+        ("readonly", "TINYINT(1) NOT NULL DEFAULT 1"),
+        ("enabled", "TINYINT(1) NOT NULL DEFAULT 1"),
+        ("last_metrics", "TEXT NOT NULL"),
+        ("last_error", "TEXT NOT NULL"),
+        ("extra_params", "TEXT NOT NULL"),
+        ("last_seen", "DATETIME NULL"),
+    ]
+    try:
+        with engine.connect() as conn:
+            existing = {row[0] for row in conn.execute(text("SHOW COLUMNS FROM db_instances")).fetchall()}
+            for col, ddl in cols_to_add:
+                if col not in existing:
+                    conn.execute(text(f"ALTER TABLE db_instances ADD COLUMN {col} {ddl}"))
+                    conn.commit()
+                    print(f"[ensure] added column db_instances.{col}")
+    except Exception as e:
+        print(f"[ensure] db columns error: {e}")
 
 
 def get_db():

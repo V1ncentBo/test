@@ -47,6 +47,7 @@ PERMISSION_CATALOG = [
     {"key": "proj", "label": "项目管理"},
     {"key": "owner", "label": "负责人"},
     {"key": "cabinets", "label": "机房机柜"},
+    {"key": "dbs", "label": "数据库监控"},
 ]
 ALL_PERMISSIONS = [p["key"] for p in PERMISSION_CATALOG]
 

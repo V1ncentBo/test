@@ -16,6 +16,7 @@ from routers import machines, metrics, alerts, ai, auth, register_node
 from routers import settings, report_schedule, ai_settings, advanced_routes, batch1_routes
 from routers.cmdb import router as cmdb_router
 from routers.resource_cmdb import router as resource_cmdb_router
+from routers.dbs import router as dbs_router, db_collector
 from websocket.manager import ws_manager
 from services.collector import metrics_service, COLLECTOR_STATS
 from services.alert_service import alert_service, notify_alerts
@@ -59,6 +60,10 @@ async def lifespan(app: FastAPI):
     # 启动 PVE 采集器（Proxmox VE：主动从各宿主机 :8006 API 拉取节点状态 + 虚拟机清单/指标）
     asyncio.create_task(pve_collector())
     print(f"[{datetime.now()}] pve 采集任务已启动")
+
+    # 启动数据库只读采集器（MySQL / ES 等，仅读不写，周期写入 db_metrics）
+    asyncio.create_task(db_collector())
+    print(f"[{datetime.now()}] 数据库采集任务已启动")
 
     yield
 
@@ -698,6 +703,7 @@ app.include_router(batch1_routes.router)
 app.include_router(register_node.router)
 app.include_router(cmdb_router)
 app.include_router(resource_cmdb_router)
+app.include_router(dbs_router)
 
 
 @app.get("/api/install-agent.sh")

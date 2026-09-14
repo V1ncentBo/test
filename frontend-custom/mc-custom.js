@@ -135,7 +135,7 @@
        用 replaceState 而非 pushState：不惊动 Vue router（它不认识这些路径）。
        刷新时 Vue router 遇未知路径只影响 router-view，外壳/侧栏照常渲染，
        我们再由 maybeDeepLink 恢复注入页。 */
-    var DEEP_PAGES = ['admin-users', 'admin-options', 'resources', 'cabinets', 'physical'];
+    var DEEP_PAGES = ['admin-users', 'admin-options', 'resources', 'cabinets', 'physical', 'db-monitor'];
     function syncUrl() {
       try {
         var want = _active ? '/u/' + _active : '/';
@@ -177,6 +177,7 @@
       {k:'home', label:'监控总览', route:'/', perm:'dashboard'},
       {k:'dev', label:'设备管理', route:'/machines', perm:'machines'},
       {k:'monitor', label:'监控详情', route:'/monitor', perm:'monitor'},
+      {k:'db', label:'数据库', page:'db-monitor', perm:'dbs'},
       {k:'alerts', label:'告警日志', route:'/alerts', perm:'alerts'}
     ];
     function applyRcOpen() {
@@ -299,7 +300,7 @@
         c.className = 'nav-item mc-sub'; c.id = 'mc-sub-' + s.k; c.href = 'javascript:void(0)';
         c.innerHTML = '<span class="nav-label">' + s.label + '</span>';
         if (s.perm) c.dataset.perm = s.perm;
-        c.onclick = function (e) { e.preventDefault(); e.stopPropagation(); goRoute(s.route); };
+        c.onclick = function (e) { e.preventDefault(); e.stopPropagation(); if (s.page) { switchTo(s.page); } else { goRoute(s.route); } };
         prev.insertAdjacentElement('afterend', c);
         prev = c;
       });
@@ -633,6 +634,7 @@
           root.appendChild(fix);
           try { if (page === 'cabinets' && window.__RC_SET_ACTIVE__) window.__RC_SET_ACTIVE__('cabinets'); } catch(e) {}
           try { if (page === 'physical' && window.__RC_SET_ACTIVE__) window.__RC_SET_ACTIVE__('physical'); } catch(e) {}
+          try { if (page === 'db-monitor') { var dbs = document.getElementById('mc-sub-db'); if (dbs) dbs.classList.add('active'); } } catch(e) {}
           _busy = false;
           flushPending();
         }).catch(function() { destroy(); _busy = false; flushPending(); });
@@ -651,6 +653,7 @@
       var st = document.getElementById('res-inline-style'); if (st) st.remove();
       var fx = document.getElementById('res-fix-style'); if (fx) fx.remove();
       try { if (window.__RC_SET_ACTIVE__) window.__RC_SET_ACTIVE__(''); } catch(e) {}
+      try { var dbs = document.getElementById('mc-sub-db'); if (dbs) dbs.classList.remove('active'); } catch(e) {}
       markSub();
       document.body.classList.remove('has-res-root');
     }

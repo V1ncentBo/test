@@ -33,19 +33,6 @@ async def lifespan(app: FastAPI):
     init_db()
     print(f"[{datetime.now()}] 数据库初始化完成")
 
-    # PERF-20260915：asyncio.to_thread 默认执行器只有 min(32, cpu_count+4) = 8 个线程。
-    # node 采集一轮会一次性提交 17 个 scrape（其中 8 台不可达，每个占住线程直到 3s 超时），
-    # 会把 8 个线程全部占满 → 同期提交的其它卸载任务（Influx 写、DB 探针、大屏快照、SNMP
-    # 抓取）只能排队，实测把 SNMP 采集周期从 2.4s 拉长到 8.3s。这里显式放大默认执行器。
-    try:
-        from concurrent.futures import ThreadPoolExecutor
-        asyncio.get_running_loop().set_default_executor(
-            ThreadPoolExecutor(max_workers=int(os.getenv("THREAD_POOL_SIZE", "32")),
-                               thread_name_prefix="mc-worker"))
-        print(f"[{datetime.now()}] 默认线程执行器已放大至 {os.getenv('THREAD_POOL_SIZE', '32')} 线程")
-    except Exception as e:
-        print(f"[{datetime.now()}] 线程执行器设置失败（忽略，沿用默认 8 线程）: {e}")
-
     # 启动大屏数据定时推送
     asyncio.create_task(dashboard_pusher())
     print(f"[{datetime.now()}] 大屏推送任务已启动")
@@ -85,70 +72,54 @@ async def lifespan(app: FastAPI):
     print(f"[{datetime.now()}] 服务已关闭")
 
 
-def _dashboard_snapshot() -> dict:
-    """大屏概览快照（纯同步）。
-
-    在独立线程里建/关自己的 Session —— SQLAlchemy Session 非线程安全，
-    不能跨线程复用，所以整段快照自带生命周期，交给 asyncio.to_thread 调用。
-    """
-    db = SessionLocal()
-    try:
-        machines = db.query(MachineInfo).all()
-        latest = metrics_service.query_all_latest()   # 2 次 Flux 查询，实测 120~170ms
-
-        # 计算统计 —— 字段名与 REST /metrics/dashboard 的 DashboardStats 完全一致
-        total_machines = len(machines)
-        online_count = sum(1 for m in machines if m.online_status == "online")
-        offline_count = total_machines - online_count
-        physical_count = sum(1 for m in machines if m.device_type == "physical")
-        vm_count = total_machines - physical_count
-        cpu_vals = [v.get("cpu_percent", 0) for v in latest.values()]
-        mem_vals = [v.get("memory_percent", 0) for v in latest.values()]
-        disk_vals = [v.get("disk_percent", 0) for v in latest.values()]
-        today_alerts = alert_service.get_today_alert_count(db)
-        today = datetime.now().strftime("%Y-%m-%d")
-        alert_machines = db.query(AlertLog.machine_id).filter(
-            AlertLog.created_at >= today
-        ).distinct().count()
-
-        return {
-            "total_machines": total_machines,
-            "physical_count": physical_count,
-            "vm_count": vm_count,
-            "online_count": online_count,
-            "offline_count": offline_count,
-            "today_alerts": today_alerts,
-            "alert_machines": alert_machines,
-            "avg_cpu": round(sum(cpu_vals) / len(cpu_vals), 1) if cpu_vals else 0,
-            "avg_memory": round(sum(mem_vals) / len(mem_vals), 1) if mem_vals else 0,
-            "avg_disk": round(sum(disk_vals) / len(disk_vals), 1) if disk_vals else 0,
-            "timestamp": datetime.now().isoformat(),
-        }
-    finally:
-        db.close()
-
-
 async def dashboard_pusher():
-    """每5秒推送大屏概览数据 — 快照 30 秒内复用
-
-    PERF-20260915 修复（这是「平台偶尔卡」的主因之一）：
-    1) 原实现只在开头读 `_cache`，计算完 data 后**从未回写** `_cache["data"]/["ts"]`，
-       于是 `if _cache["data"]` 恒为假 —— 号称的“30秒缓存”是死代码，
-       实际每 5 秒就重跑一次快照（2 次 Flux 查询 + 3 次 SQL，约 150~250ms）。
-    2) 该快照原先直接在事件循环里同步执行；uvicorn 单 worker 下每次都把**全站请求**
-       冻住 150~250ms，表现为用户端“偶尔卡”。现整体交给线程执行。
-    """
-    _cache = {"data": None, "ts": 0.0}
+    """每5秒推送大屏概览数据 — 带30秒缓存减少数据库查询"""
+    _cache = {"data": None, "ts": 0}
     while True:
         try:
             now_ts = datetime.now().timestamp()
-            if _cache["data"] is not None and (now_ts - _cache["ts"]) < 30:
+            # 30秒内使用缓存
+            if _cache["data"] and (now_ts - _cache["ts"]) < 30:
                 await ws_manager.broadcast_dashboard(_cache["data"])
-            else:
-                data = await asyncio.to_thread(_dashboard_snapshot)
-                _cache["data"] = data
-                _cache["ts"] = datetime.now().timestamp()
+                await asyncio.sleep(5)
+                continue
+
+            db = SessionLocal()
+            try:
+                machines = db.query(MachineInfo).all()
+                latest = metrics_service.query_all_latest()
+
+                # 计算统计 —— 字段名与 REST /metrics/dashboard 的 DashboardStats 完全一致
+                total_machines = len(machines)
+                online_count = sum(1 for m in machines if m.online_status == "online")
+                offline_count = total_machines - online_count
+                physical_count = sum(1 for m in machines if m.device_type == "physical")
+                vm_count = total_machines - physical_count
+                cpu_vals = [v.get("cpu_percent", 0) for v in latest.values()]
+                mem_vals = [v.get("memory_percent", 0) for v in latest.values()]
+                disk_vals = [v.get("disk_percent", 0) for v in latest.values()]
+                today_alerts = alert_service.get_today_alert_count(db)
+                today = datetime.now().strftime("%Y-%m-%d")
+                alert_machines = db.query(AlertLog.machine_id).filter(
+                    AlertLog.created_at >= today
+                ).distinct().count()
+
+                data = {
+                    "total_machines": total_machines,
+                    "physical_count": physical_count,
+                    "vm_count": vm_count,
+                    "online_count": online_count,
+                    "offline_count": offline_count,
+                    "today_alerts": today_alerts,
+                    "alert_machines": alert_machines,
+                    "avg_cpu": round(sum(cpu_vals) / len(cpu_vals), 1) if cpu_vals else 0,
+                    "avg_memory": round(sum(mem_vals) / len(mem_vals), 1) if mem_vals else 0,
+                    "avg_disk": round(sum(disk_vals) / len(disk_vals), 1) if disk_vals else 0,
+                    "timestamp": datetime.now().isoformat(),
+                }
                 await ws_manager.broadcast_dashboard(data)
+            finally:
+                db.close()
         except Exception as e:
             print(f"[DashboardPusher] Error: {e}")
         await asyncio.sleep(5)
@@ -195,7 +166,7 @@ async def offline_detector():
                             )
                             db.add(alert)
                             db.commit()
-                            await notify_alerts([alert], m, ws_manager)
+                            notify_alerts([alert], m, ws_manager)
                     except Exception as e:
                         print(f"[OfflineDetector] 离线告警异常 {m.ip}: {e}")
             finally:
@@ -271,9 +242,7 @@ async def schedule_checker():
                         print(f"[Scheduler] Running: {s.get('name')} ({s.get('frequency')})")
                         try:
                             from routers.report_schedule import generate_report
-                            # PERF-20260915：报表生成要读 InfluxDB 长区间 + 渲染 HTML，
-                            # 可能耗时秒级；原先在事件循环里同步执行，到点即冻住全站。
-                            await asyncio.to_thread(generate_report, s)
+                            generate_report(s)
                         except Exception as e:
                             print(f"[Scheduler] Failed: {e}")
             await asyncio.sleep(60)
@@ -314,9 +283,7 @@ async def node_exporter_collector():
                             if k_gb in res:
                                 res[bare] = res.pop(k_gb)
                         data.update(res)
-                        # PERF-20260915：Influx 写为同步 HTTP（每次约 5ms），逐台串行写在
-                        # 事件循环里会造成几十毫秒级抖动，卸载到线程。
-                        if await asyncio.to_thread(metrics_service.write_metrics, data):
+                        if metrics_service.write_metrics(data):
                             success += 1
                             metrics_service.touch_last_seen(m.id)
                             if m.online_status != "online":
@@ -327,7 +294,7 @@ async def node_exporter_collector():
                             try:
                                 alerts = alert_service.check_and_alert(db, m.id, data)
                                 if alerts:
-                                    await notify_alerts(alerts, m, ws_manager)
+                                    notify_alerts(alerts, m, ws_manager)
                             except Exception as e:
                                 print(f"[NodeExporterCollector] 告警异常 {m.ip}: {e}")
             finally:
@@ -339,9 +306,8 @@ async def node_exporter_collector():
             "last_cycle_devices": success + failed, "last_success": success,
             "last_failed": failed, "last_duration_sec": dur, "last_run": datetime.now().isoformat(),
         })
-        await asyncio.to_thread(
-            metrics_service.write_collector_stats, "node",
-            cycle_devices=success + failed, success=success, failed=failed, duration_sec=dur)
+        metrics_service.write_collector_stats("node", cycle_devices=success + failed,
+                                              success=success, failed=failed, duration_sec=dur)
         await asyncio.sleep(interval)
 
 
@@ -370,8 +336,7 @@ async def _collect_snmp_device(m, timeout, retries, last_sample, cycle_count):
             if not res or not res.get("online"):
                 return None  # 不可达
             mid = m.id
-            await asyncio.to_thread(
-                metrics_service.write_device_metrics, mid, True, res.get("sys_uptime", 0))
+            metrics_service.write_device_metrics(mid, True, res.get("sys_uptime", 0))
             changed = False
             if mm and ((not mm.name or mm.name == m.ip) and res.get("sys_name")):
                 mm.name = res["sys_name"]; changed = True
@@ -417,14 +382,14 @@ async def _collect_snmp_device(m, timeout, retries, last_sample, cycle_count):
                     "in_discards": p.get("in_discards", 0), "out_discards": p.get("out_discards", 0),
                 })
             # 批量写端口（P1-6：52 端口一次性写入）
-            await asyncio.to_thread(metrics_service.write_ports_batch, mid, port_writes)
+            metrics_service.write_ports_batch(mid, port_writes)
             last_sample[mid] = cur
             metrics_service.touch_last_seen(mid)
             # 端口级告警（P0-2）
             try:
                 alerts = alert_service.check_port_alerts(db, mid, port_alert_inputs, mm or m)
                 if alerts:
-                    await notify_alerts(alerts, mm or m, ws_manager)
+                    notify_alerts(alerts, mm or m, ws_manager)
             except Exception as e:
                 print(f"[SNMPCollector] {m.ip} 端口告警异常: {e}")
             # IP/MAC 映射（节流：每 10 轮 或 缓存为空）
@@ -505,10 +470,9 @@ async def snmp_collector():
             "last_failed": failed, "last_skipped_down": skipped,
             "last_duration_sec": dur, "last_run": datetime.now().isoformat(),
         })
-        await asyncio.to_thread(
-            metrics_service.write_collector_stats, "snmp",
-            cycle_devices=success + failed + skipped, success=success, failed=failed,
-            skipped_down=skipped, duration_sec=dur)
+        metrics_service.write_collector_stats("snmp", cycle_devices=success + failed + skipped,
+                                              success=success, failed=failed, skipped_down=skipped,
+                                              duration_sec=dur)
         await asyncio.sleep(interval)
 
 
@@ -551,7 +515,7 @@ async def pve_collector():
                             failed += 1
                             continue
                         # 1) 节点列表（自动发现节点名，缓存到 pve_node）
-                        nodes = await asyncio.to_thread(discover_nodes, base, token, timeout)
+                        nodes = discover_nodes(base, token, timeout)
                         node_name = h.pve_node or (nodes[0] if nodes else None)
                         if not node_name:
                             failed += 1
@@ -559,7 +523,7 @@ async def pve_collector():
                         if not h.pve_node:
                             h.pve_node = node_name
                         # 2) 宿主机节点状态 -> 写 machine_metrics（宿主机本身指标）
-                        ns = await asyncio.to_thread(get_node_status, base, token, node_name, timeout)
+                        ns = get_node_status(base, token, node_name, timeout)
                         if ns:
                             mem = ns.get("memory") or {}
                             rootfs = ns.get("rootfs") or {}
@@ -573,7 +537,7 @@ async def pve_collector():
                                 "disk_total_gb": round((rootfs.get("total", 0)) / 1e9, 2),
                                 "disk_percent": round((rootfs.get("used", 1)) / (rootfs.get("total", 1)) * 100, 2) if rootfs.get("total") else 0,
                             }
-                            if await asyncio.to_thread(metrics_service.write_metrics, host_metrics):
+                            if metrics_service.write_metrics(host_metrics):
                                 metrics_service.touch_last_seen(h.id)
                                 if h.online_status != "online":
                                     h.online_status = "online"
@@ -584,7 +548,7 @@ async def pve_collector():
                         else:
                             failed += 1
                         # 3) 集群 VM 列表 -> upsert 子设备 + 写 vm_metrics
-                        vms = await asyncio.to_thread(list_vms, base, token, timeout)
+                        vms = list_vms(base, token, timeout)
                         seen = set()
                         for v in vms:
                             vmid = int(v.get("vmid"))
@@ -635,8 +599,7 @@ async def pve_collector():
                                     if netout >= _p_netout:
                                         net_out_mbps = round((netout - _p_netout) / _dt * 8 / 1e6, 3)
                             PVE_VM_NET_PREV[(h.id, vmid)] = (netin, netout, _now)
-                            await asyncio.to_thread(
-                                metrics_service.write_vm_metrics, vm.id, vmid, vm_name, {
+                            metrics_service.write_vm_metrics(vm.id, vmid, vm_name, {
                                 "cpu_percent": round((cpu / maxcpu) * 100, 2) if maxcpu else round(cpu * 100, 2),
                                 "cpu_cores": maxcpu,
                                 "memory_percent": round((mem / maxmem) * 100, 2) if maxmem else 0,
@@ -674,7 +637,7 @@ async def pve_collector():
                         _now = time.time()
                         if (_now - PVE_SSH_LAST.get(h.id, 0)) >= 300:
                             try:
-                                _cnt, _detail = await asyncio.to_thread(pve_ssh_resolve_ips, h)
+                                _cnt, _detail = pve_ssh_resolve_ips(h)
                                 if _cnt:
                                     print(f"[PVECollector] {h.ip} SSH 反查 IP 更新 {_cnt} 台 VM")
                                 PVE_SSH_LAST[h.id] = _now
@@ -693,9 +656,9 @@ async def pve_collector():
             "last_failed": failed, "last_vm_count": vm_count,
             "last_duration_sec": dur, "last_run": datetime.now().isoformat(),
         })
-        await asyncio.to_thread(
-            metrics_service.write_collector_stats, "pve", cycle_devices=n_hosts,
-            success=success, failed=failed, vm_count=vm_count, duration_sec=dur)
+        metrics_service.write_collector_stats("pve", cycle_devices=n_hosts,
+                                              success=success, failed=failed,
+                                              vm_count=vm_count, duration_sec=dur)
         await asyncio.sleep(interval)
 
 

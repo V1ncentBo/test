@@ -17,3 +17,9 @@ slowapi==0.1.9
 pysnmp==4.4.12
 pyasn1==0.4.8
 pyasn1-modules==0.2.8
+# ── 数据库监控探针驱动（全部只读使用；2026-09-15 新增）──
+pg8000
+pymongo
+kafka-python
+python-tds
+oracledb

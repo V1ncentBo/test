@@ -66,9 +66,30 @@ services:
       context: ./backend
       dockerfile: Dockerfile
     container_name: monitor-backend
-    mem_limit: 512m
-    cpus: "1.0"
-    memswap_limit: 512m
+    # PERF-20260915b：生产禁用 --reload。
+    # ① 镜像里的旧 CMD 带 --reload（开发特性）：/app 是 bind-mount，任何 .py 写入
+    #    （包括往 backups-*/ 目录拷 .py 备份、临时诊断脚本）都会触发全站热重启，
+    #    实测该窗口 /api/health 要等 14.5s 才返回；reloader 还常驻一个父进程+文件监视。
+    # ② ⚠ 必须单进程：本应用 lifespan 里挂着 8 个后台采集循环，且状态全在进程内
+    #    （COLLECTOR_STATS / dashboard 缓存 / WebSocket 连接表）。开 --workers 2 会让
+    #    每个 worker 各跑一遍采集 → 重复写 InfluxDB、重复告警、WS 连接表分裂
+    #    （前端连 A worker、采集器在 B worker 广播 → 推不到）。
+    #    因此这里显式不带 --workers，也不要按 Dockerfile 里的 --workers 2 执行。
+    # ③ 关掉后改后端代码需显式 `docker restart monitor-backend`（不再自动重启）。
+    command: ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
+    mem_limit: 768m
+    cpus: "2.0"
+    memswap_limit: 768m
+    # RESILIENCE-20260915：健康检查。
+    # `restart: always` 只能覆盖"进程退出"，对"进程假死（不退出但无响应）"无能为力
+    # —— 那类故障靠这个 healthcheck 标记 unhealthy，再由宿主机 monitor-watchdog.timer 自动重启。
+    # 容器内无 curl，用自带 python3 探；network_mode: host 故 127.0.0.1:8000 可达。
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import urllib.request,sys;sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/api/health',timeout=4).getcode()==200 else 1)"]
+      interval: 30s
+      timeout: 8s
+      retries: 3
+      start_period: 45s
     env_file:
       - .env
     restart: always
@@ -107,6 +128,14 @@ services:
     mem_limit: 128m
     cpus: "0.5"
     restart: always
+    # RESILIENCE-20260915：nginx 假死（进程在但 80 不响应）由 healthcheck 标记，
+    # 再交给 monitor-watchdog.timer 自动重启。镜像内有 curl。
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "-o", "/dev/null", "http://127.0.0.1/"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
     ports:
       - "80:80"
       - "443:443"

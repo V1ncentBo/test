@@ -9,7 +9,6 @@ import logging, socket, json
 
 from models.database import get_db, MachineInfo
 from routers.auth import get_current_user
-from services.cache import ttl_cache
 
 logger = logging.getLogger("batch1")
 router = APIRouter(prefix="/api/advanced", tags=["Batch1-高级功能"], dependencies=[Depends(get_current_user)])
@@ -21,11 +20,6 @@ BJT = __import__('zoneinfo', fromlist=['ZoneInfo']).ZoneInfo("Asia/Shanghai")
 # ═══════════════════════════════════════════════════════════
 
 @router.get("/group-stats")
-
-# PERF-20260915：本端点每次都会跑 query_all_latest()（2 次 Flux，实测 ~150ms），
-# 实测响应 0.17~0.20s，且没有任何缓存。分组聚合变化很慢，20s 内复用即可。
-@ttl_cache(ttl=20)
-
 def group_stats(db: Session = Depends(get_db)):
     """按分组统计平均 CPU/内存/磁盘"""
     machines = db.query(MachineInfo).all()

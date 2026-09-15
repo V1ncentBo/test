@@ -146,6 +146,7 @@ class DbInstance(Base):
     port = Column(Integer, default=3306, comment="端口")
     account = Column(String(128), default="", comment="监控账号")
     password_enc = Column(Text, default="", comment="密码(Fernet加密)")
+    template = Column(String(64), default="", comment="指标模板 key（如 default-rdb / es-log）")
     readonly = Column(Boolean, default=True, comment="是否强制只读")
     enabled = Column(Boolean, default=True, comment="是否纳入采集")
     tags = Column(String(256), default="", comment="标签逗号分隔")
@@ -217,6 +218,7 @@ def ensure_db_columns():
         ("last_error", "TEXT NOT NULL"),
         ("extra_params", "TEXT NOT NULL"),
         ("last_seen", "DATETIME NULL"),
+        ("template", "VARCHAR(64) NOT NULL DEFAULT ''"),
     ]
     try:
         with engine.connect() as conn:

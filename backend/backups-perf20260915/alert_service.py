@@ -1,6 +1,5 @@
 """告警服务"""
 import os
-import threading
 from datetime import datetime, timedelta
 from sqlalchemy.orm import Session
 from models.database import AlertLog, MachineInfo
@@ -221,43 +220,16 @@ class AlertService:
 alert_service = AlertService()
 
 
-def _notify_external(payloads: list):
-    """后台线程里做钉钉/邮件外呼（同步网络调用），彻底不阻塞调用方。"""
-    from services.dingtalk import send_alert as dingtalk_send
-    from services.email_service import send_alert as email_send
-    for kw in payloads:
-        try:
-            dingtalk_send(**kw)
-        except Exception:
-            pass
-        try:
-            email_send(**kw)
-        except Exception:
-            pass
-
-
-async def notify_alerts(alerts, machine, ws_manager):
-    """统一推送：WebSocket 实时广播 + 钉钉 + 邮件。供各采集器与 push 接口复用，避免重复代码。
-
-    PERF-20260915：钉钉/邮件都是**同步网络调用**（HTTP / SMTP，可达百毫秒~秒级）。
-    本函数的调用方全部是运行在事件循环里的采集器（node/snmp/pve/db/离线检测），
-    原先直接在当前线程外呼 → 每次触发告警都会把整个 API 冻住。
-    现在：在主线程（SQLAlchemy session 仍有效）把 ORM 字段拍成纯 dict，
-    再把外呼丢给后台线程 fire-and-forget。
-
-    FIX-20260915b：本函数原先漏了 await —— broadcast_alert 是 async 方法，
-    同步调用只会得到一个 coroutine 对象并被直接丢弃（Python 还会打印
-    "coroutine was never awaited"），**告警从未真正经 WebSocket 推给前端**。
-    现改为 async def 并正常 await；三个调用点（均为 async 采集器：
-    offline_detector / node_exporter_collector / snmp_collector）同步改为
-    await notify_alerts(...)。
-    """
+def notify_alerts(alerts, machine, ws_manager):
+    """统一推送：WebSocket 实时广播 + 钉钉 + 邮件。供各采集器与 push 接口复用，避免重复代码。"""
     if not alerts:
         return
-    payloads = []
+    # 局部导入，避免顶层循环依赖
+    from services.dingtalk import send_alert as dingtalk_send
+    from services.email_service import send_alert as email_send
     for alert in alerts:
         try:
-            await ws_manager.broadcast_alert({
+            ws_manager.broadcast_alert({
                 "id": alert.id,
                 "machine_id": alert.machine_id,
                 "alert_type": alert.alert_type,
@@ -267,16 +239,23 @@ async def notify_alerts(alerts, machine, ws_manager):
             })
         except Exception:
             pass
-        if machine:
-            try:
-                payloads.append({
-                    "machine_name": machine.name, "machine_ip": machine.ip,
-                    "machine_id": machine.id,
-                    "alert_type": alert.alert_type, "alert_level": alert.alert_level,
-                    "metric_name": alert.metric_name, "current_value": alert.current_value,
-                    "threshold_value": alert.threshold_value,
-                })
-            except Exception:
-                pass
-    if payloads:
-        threading.Thread(target=_notify_external, args=(payloads,), daemon=True).start()
+        try:
+            if machine:
+                dingtalk_send(
+                    machine_name=machine.name, machine_ip=machine.ip, machine_id=machine.id,
+                    alert_type=alert.alert_type, alert_level=alert.alert_level,
+                    metric_name=alert.metric_name, current_value=alert.current_value,
+                    threshold_value=alert.threshold_value,
+                )
+        except Exception:
+            pass
+        try:
+            if machine:
+                email_send(
+                    machine_name=machine.name, machine_ip=machine.ip, machine_id=machine.id,
+                    alert_type=alert.alert_type, alert_level=alert.alert_level,
+                    metric_name=alert.metric_name, current_value=alert.current_value,
+                    threshold_value=alert.threshold_value,
+                )
+        except Exception:
+            pass

@@ -14,7 +14,7 @@ from models.schema import MetricData, MetricQuery, MetricSeries, DashboardStats
 
 from services.collector import metrics_service
 
-from services.cache import ttl_cache, attl_cache
+from services.cache import ttl_cache
 
 from services.alert_service import alert_service
 
@@ -266,10 +266,6 @@ def get_history(
 
 @router.get("/snmp-ports-summary", dependencies=[Depends(require_any_perm("machines", "monitor"))])
 
-# PERF-20260915：单台设备的 query_port_latest 实测约 0.4~0.6s（Flux last() 跨 ~52 端口序列）。
-# 端口数据 30s 才更新一次，10s 内复用完全安全，可把设备列表页的重复刷新成本降到 ~0。
-@attl_cache(ttl=10)
-
 async def snmp_ports_summary(db: Session = Depends(get_db)):
 
     """所有 SNMP 设备的端口 UP/total 汇总，供设备管理列表「端口状态」列展示"""
@@ -286,10 +282,7 @@ async def snmp_ports_summary(db: Session = Depends(get_db)):
 
     for d in devices:
 
-        # PERF-20260915：query_port_latest 实测约 0.5s（Flux last() 跨 52 端口序列）。
-        # 该端点是 async，原先同步调用会把事件循环冻住 0.5s —— 任何用户打开设备页，
-        # 全站请求都被拖住。卸载到线程（纯 Influx 读，无 session）。
-        ports = await asyncio.to_thread(metrics_service.query_port_latest, d.id)
+        ports = metrics_service.query_port_latest(d.id)
 
         total = len(ports)
 
@@ -309,9 +302,6 @@ async def snmp_ports_summary(db: Session = Depends(get_db)):
 
 @router.get("/device/{machine_id}/ports", dependencies=[Depends(require_any_perm("machines", "monitor"))])
 
-# PERF-20260915：同上，端口表 10s 内复用（数据本身 30s 才刷新一次）
-@attl_cache(ttl=10)
-
 async def device_ports(machine_id: int, db: Session = Depends(get_db)):
 
     """单台 SNMP 设备端口最新状态表（详情页端口视图用）"""
@@ -322,7 +312,7 @@ async def device_ports(machine_id: int, db: Session = Depends(get_db)):
 
         raise HTTPException(status_code=404, detail="设备不存在")
 
-    ports = await asyncio.to_thread(metrics_service.query_port_latest, machine_id)
+    ports = metrics_service.query_port_latest(machine_id)
 
     ipmac = metrics_service.get_port_ipmac(machine_id)
 

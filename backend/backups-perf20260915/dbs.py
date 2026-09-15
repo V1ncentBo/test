@@ -1015,10 +1015,7 @@ async def db_collector():
                             inst.last_seen = datetime.now()
                             fields = _coerce_fields(res)
                             fields["status"] = res.get("status", "online")
-                            # PERF-20260915：Influx 写是同步 HTTP，原实现直接在事件循环里写，
-                            # 每个实例约占 5ms。卸载到线程，避免周期性冻结 API。
-                            await asyncio.to_thread(
-                                metrics_service.write_db_metrics, inst.id, inst.type, fields)
+                            metrics_service.write_db_metrics(inst.id, inst.type, fields)
                         else:
                             inst.status = "offline" if res.get("offline") else "exception"
                             inst.last_error = res.get("error", "未知错误")

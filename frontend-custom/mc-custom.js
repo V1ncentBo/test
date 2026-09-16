@@ -172,11 +172,12 @@
       {k:'owner', label:'负责人', perm:'owner'},
       {k:'cabinets', label:'机房机柜', perm:'cabinets'}
     ];
-    /* 监控中心二级子项（需求①：监控详情/告警日志挂监控中心，不挂资源管理） */
+    /* 监控中心二级子项（需求①：监控详情/告警日志挂监控中心，不挂资源管理）
+       2026-09-16：删除「监控详情」子项 —— 设备管理页新增的「列表/卡片」视图已完全覆盖该列表页功能；
+       设备详情 /monitor/<id> 仍从设备管理的「详情」按钮进入（见 MC-MACH-VIEW 的代理跳转）。 */
     var MC_SUBS = [
       {k:'home', label:'监控总览', route:'/', perm:'dashboard'},
       {k:'dev', label:'设备管理', route:'/machines', perm:'machines'},
-      {k:'monitor', label:'监控详情', route:'/monitor', perm:'monitor'},
       {k:'db', label:'数据库', page:'db-monitor', perm:'dbs'},
       {k:'alerts', label:'告警日志', route:'/alerts', perm:'alerts'}
     ];
@@ -257,10 +258,17 @@
     }
     function syncMcActive() {
       var path = location.pathname || '/';
-      var injected = !!_active; // 注入页（资源管理等）打开时不点亮，与 clearNavActive 口径一致
+      /* 注入页打开时（_active 非空），路由型子项一律不点亮；
+         但注入页本身若挂在「监控中心」下（目前只有「数据库」= db-monitor：
+         MC_SUBS 里唯一带 page 字段的项），必须点亮它自己，
+         否则点进数据库页后侧栏整列无高亮（2026-09-16 修复）。 */
+      var pageKey = _active || '';
       var any = false;
       MC_SUBS.forEach(function (s) {
-        var on = !injected && (s.route === path);
+        // 「监控详情」子项已删（2026-09-16）：/monitor 列表页与 /monitor/<id> 设备详情页统一归属「设备管理」，
+        // 详情是设备管理的下钻，这样从设备管理点「详情」进去后侧栏不会整列熄灭。
+        var own = (s.k === 'dev') && /^\/monitor(\/|$)/.test(path);
+        var on = pageKey ? (s.page === pageKey) : (s.route === path || own);
         if (on) any = true;
         mcActiveClasses(document.getElementById('mc-sub-' + s.k), on);
       });
@@ -858,3 +866,425 @@
   }
 })();
 
+/* ══ MC-MACH-VIEW 设备管理「列表 / 卡片」视图切换 ══ */
+/* ===MC-MACH-VIEW 2026-09-16===
+ * 需求：设备管理 /machines 加一个切换按钮，把表格列表变成「监控详情 /monitor」那种卡片。
+ * - 数据源＝当前表格行（跟随筛选/搜索，与 MC-MACH-STATS 三卡同口径）
+ * - 卡片外观复用 .machine-mini-card（mc-custom.css L133 既有规则），本模块只补内部布局
+ * - 卡片点击 → 代理该行原生「详情」按钮（复用原生 /monitor/<id> 跳转，零 id 依赖）
+ *     hover 浮出的铅笔 → 代理「编辑」按钮
+ * - 进度条配色对齐监控详情：<60 绿 #52c41a / 60~80 橙 #faad14 / >=80 红 #ff4d4f
+ * - 视图模式记 localStorage('mcMachView')，默认 list；切换控件挂在 .page-header 右侧（绝对定位，不动原生流）
+ */
+(function () {
+  'use strict';
+  var ID = 'mc-mach-view';
+  var GRID_ID = 'mc-mach-cards';
+  var LS_KEY = 'mcMachView';
+  var C_OK = '#52c41a', C_WARN = '#faad14', C_BAD = '#ff4d4f';
+
+  var ICON_LIST = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="8" y1="6" x2="21" y2="6"></line><line x1="8" y1="12" x2="21" y2="12"></line><line x1="8" y1="18" x2="21" y2="18"></line><line x1="3" y1="6" x2="3.01" y2="6"></line><line x1="3" y1="12" x2="3.01" y2="12"></line><line x1="3" y1="18" x2="3.01" y2="18"></line></svg>';
+  var ICON_CARDS = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1.5"></rect><rect x="14" y="3" width="7" height="7" rx="1.5"></rect><rect x="3" y="14" width="7" height="7" rx="1.5"></rect><rect x="14" y="14" width="7" height="7" rx="1.5"></rect></svg>';
+  var ICON_EDIT = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"></path><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"></path></svg>';
+
+  function getView() {
+    try { return localStorage.getItem(LS_KEY) === 'cards' ? 'cards' : 'list'; } catch (e) { return 'list'; }
+  }
+  function setView(v) { try { localStorage.setItem(LS_KEY, v); } catch (e) {} }
+  function page() { return document.querySelector('.main-area .machines-page'); }
+
+  function num(s) { var m = String(s == null ? '' : s).match(/-?\d+(\.\d+)?/); return m ? parseFloat(m[0]) : NaN; }
+  function barColor(v) { if (!isFinite(v)) return C_OK; if (v >= 80) return C_BAD; if (v >= 60) return C_WARN; return C_OK; }
+
+  // 需要渲染的行：必须带名称列（排除子机展开行/空态行）
+  function rows() {
+    var mp = page(); if (!mp) return [];
+    return Array.prototype.slice.call(mp.querySelectorAll('.table-wrap tbody tr')).filter(function (tr) {
+      return !!tr.querySelector('.col-name');
+    });
+  }
+
+  function rowData(tr) {
+    var txt = function (sel) { var e = tr.querySelector(sel); return e ? (e.textContent || '').trim() : ''; };
+    var ms = Array.prototype.slice.call(tr.querySelectorAll('.col-metric')).slice(0, 3).map(function (td) {
+      return (td.textContent || '').trim();
+    });
+    // 名称：优先取名称链接文本（表格里子机带折叠树前缀 ├ └ │，卡片需还原为纯名，与监控详情一致）
+    var linkEl = tr.querySelector('.col-name a, .col-name .row-link');
+    var name = linkEl ? (linkEl.textContent || '').trim() : txt('.col-name');
+    name = name.replace(/^[\s\u2500-\u257F|]+/, '');
+    return {
+      name: name || '未命名',
+      ip: txt('.col-ip'),
+      type: txt('.col-type'),
+      online: txt('.col-status').indexOf('在线') >= 0,
+      cpu: ms[0] || '—', mem: ms[1] || '—', disk: ms[2] || '—',
+      tr: tr
+    };
+  }
+
+  // 代理原生行操作按钮（详情 / 编辑 / AI），完全复用原生跳转逻辑
+  function proxyAction(tr, label) {
+    try {
+      var btns = tr.querySelectorAll('.col-actions button, .col-actions a');
+      for (var i = 0; i < btns.length; i++) {
+        if ((btns[i].textContent || '').trim() === label) { btns[i].click(); return true; }
+      }
+      if (label === '详情') {
+        var link = tr.querySelector('.col-name a, .row-link');
+        if (link) { link.click(); return true; }
+      }
+    } catch (e) {}
+    return false;
+  }
+
+  function metric(label, valTxt) {
+    var v = num(valTxt);
+    var pct = isFinite(v) ? Math.max(0, Math.min(100, v)) : 0;
+    var el = document.createElement('div');
+    el.className = 'mini-metric';
+    el.innerHTML =
+      '<span class="label">' + label + '</span>' +
+      '<span class="mc-prog"><span class="mc-prog-outer"><span class="mc-prog-inner" style="width:' + pct + '%;background:' + barColor(v) + '"></span></span></span>' +
+      '<span class="mc-prog-txt"></span>';
+    el.querySelector('.mc-prog-txt').textContent = (valTxt && valTxt !== '—') ? valTxt : '—';
+    return el;
+  }
+
+  function card(d) {
+    var el = document.createElement('article');
+    el.className = 'machine-mini-card mc-anim';
+    el.setAttribute('data-mc-name', d.name);
+
+    var head = document.createElement('div');
+    head.className = 'mini-header';
+    head.innerHTML =
+      '<span class="mini-name"></span>' +
+      '<button class="mc-mini-edit" type="button" title="编辑" aria-label="编辑">' + ICON_EDIT + '</button>' +
+      '<span class="status-dot ' + (d.online ? 'online' : 'offline') + '" title="' + (d.online ? '在线' : '离线') + '"></span>';
+    head.querySelector('.mini-name').textContent = d.name;
+
+    var ip = document.createElement('div');
+    ip.className = 'mini-ip';
+    ip.textContent = (d.ip || '—') + ' | ' + (d.type || '—');
+
+    var ms = document.createElement('div');
+    ms.className = 'mini-metrics';
+    ms.appendChild(metric('CPU', d.cpu));
+    ms.appendChild(metric('MEM', d.mem));
+    ms.appendChild(metric('DISK', d.disk));
+
+    el.appendChild(head); el.appendChild(ip); el.appendChild(ms);
+
+    el.addEventListener('click', function () { proxyAction(d.tr, '详情'); });
+    head.querySelector('.mc-mini-edit').addEventListener('click', function (e) {
+      e.stopPropagation();
+      proxyAction(d.tr, '编辑');
+    });
+    return el;
+  }
+
+  // 每张卡片的入场节奏（--i 供 CSS animation-delay 使用；封顶避免长列表尾巴太久）
+  function stagger(el, i) { el.style.setProperty('--i', String(Math.min(i, 14))); }
+
+  var _sig = '';
+  function signature(rs) {
+    return rs.length + '|' + rs.map(function (tr) {
+      var t = (tr.textContent || '').replace(/\s+/g, '');
+      return t.length + ':' + t.slice(0, 48);
+    }).join('~');
+  }
+
+  function render(g, rs) {
+    g.innerHTML = '';
+    if (!rs.length) {
+      var e = document.createElement('div');
+      e.className = 'mc-card-empty';
+      e.textContent = '暂无设备';
+      g.appendChild(e);
+      return;
+    }
+    var frag = document.createDocumentFragment();
+    rs.forEach(function (tr, i) { var c = card(rowData(tr)); stagger(c, i); frag.appendChild(c); });
+    g.appendChild(frag);
+  }
+
+  function ensureGrid() {
+    var mp = page(); if (!mp) return null;
+    var wrap = mp.querySelector('.table-wrap'); if (!wrap) return null;
+    var g = document.getElementById(GRID_ID);
+    if (!g) {
+      g = document.createElement('div');
+      g.id = GRID_ID; g.className = 'mc-card-grid';
+      wrap.insertAdjacentElement('afterend', g);
+    } else if (g.previousElementSibling !== wrap) {
+      // Vue 重排后归位（保持紧贴表格容器之后）
+      wrap.insertAdjacentElement('afterend', g);
+    }
+    return g;
+  }
+
+  function applyView() {
+    var mp = page(); if (!mp) return;
+    var v = getView();
+    var wrap = mp.querySelector('.table-wrap');
+    var g = document.getElementById(GRID_ID);
+    if (wrap) wrap.style.display = (v === 'cards') ? 'none' : '';
+    if (g) g.style.display = (v === 'cards') ? '' : 'none';
+    var sw = document.getElementById(ID);
+    if (sw) {
+      Array.prototype.forEach.call(sw.querySelectorAll('.mc-vs-btn'), function (b) {
+        b.classList.toggle('is-active', b.getAttribute('data-v') === v);
+      });
+    }
+  }
+
+  function ensureSwitch() {
+    var mp = page(); if (!mp) return;
+    var ph = mp.querySelector('.page-header'); if (!ph) return;
+    if (document.getElementById(ID)) return;
+    var sw = document.createElement('div');
+    sw.id = ID; sw.className = 'mc-view-switch';
+    sw.setAttribute('role', 'group');
+    sw.setAttribute('aria-label', '视图切换');
+    sw.innerHTML =
+      '<button class="mc-vs-btn" type="button" data-v="list" title="列表视图">' + ICON_LIST + '</button>' +
+      '<button class="mc-vs-btn" type="button" data-v="cards" title="卡片视图">' + ICON_CARDS + '</button>';
+    sw.addEventListener('click', function (e) {
+      var b = (e.target && e.target.closest) ? e.target.closest('.mc-vs-btn') : null;
+      if (!b) return;
+      var v = b.getAttribute('data-v');
+      if (v === getView()) return;
+      setView(v); _sig = ''; sync();
+    });
+    ph.appendChild(sw);
+  }
+
+  function sync() {
+    var path = location.pathname.replace(/\/$/, '');
+    if (path !== '/machines') {
+      var sw = document.getElementById(ID); if (sw && sw.parentNode) sw.parentNode.removeChild(sw);
+      var g0 = document.getElementById(GRID_ID); if (g0 && g0.parentNode) g0.parentNode.removeChild(g0);
+      _sig = '';
+      return false;
+    }
+    if (!page()) return false;
+    ensureSwitch();
+    var g = ensureGrid();
+    if (g && getView() === 'cards') {
+      var rs = rows();
+      var sig = signature(rs);
+      if (sig !== _sig) { _sig = sig; render(g, rs); }
+    }
+    applyView();
+    return true;
+  }
+
+  var timer = null;
+  function schedule() {
+    sync();
+    if (timer) clearTimeout(timer);
+    timer = setTimeout(function () { timer = null; sync(); }, 200);
+  }
+
+  function boot() {
+    try {
+      schedule();
+      var mo = new MutationObserver(schedule);
+      mo.observe(document.body, { childList: true, subtree: true, characterData: true });
+    } catch (e) {}
+  }
+
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot);
+  else boot();
+  window.addEventListener('popstate', schedule);
+  var ps = history.pushState;
+  if (ps) {
+    history.pushState = function () { var r = ps.apply(this, arguments); setTimeout(schedule, 60); return r; };
+  }
+})();
+
+
+/* ══ MC-ALERT-STATS 告警日志顶部总结卡片 ══ */
+/* ===MC-ALERT-STATS 2026-09-16===
+ * 需求：告警日志 /alerts 顶部加一排总结卡片（与设备管理 / 监控总览同风格），表格保持表格。
+ * - 复用平台既有 .stat-grid / .stat-card（mc CSS 已统一风格），零新增 CSS
+ * - 口径＝**全部告警**（与页头「N 条未处理」/ 分页「N 条记录」自洽），不随筛选变化
+ * - 数据源＝GET /api/alerts/?limit=500（与页面自身同端点），30s 缓存；标记解决后自动重取
+ * - 数字 count-up 650ms；prefers-reduced-motion 下直接赋值
+ * - 位置：.alerts-page > .page-header 之后、工具栏之前（与设备管理一致）
+ */
+(function () {
+  'use strict';
+  var ID = 'mc-alert-stats';
+  var ICONS = {
+    pending: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"></circle><path d="M12 7.5v5l3.6 2.1"></path></svg>',
+    critical: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3.4 21.2 19.6H2.8z"></path><line x1="12" y1="9.4" x2="12" y2="13.8"></line><line x1="12" y1="16.6" x2="12.01" y2="16.6"></line></svg>',
+    warning: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"></circle><line x1="12" y1="7.4" x2="12" y2="13"></line><line x1="12" y1="16.4" x2="12.01" y2="16.4"></line></svg>',
+    info: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"></circle><line x1="12" y1="11" x2="12" y2="16.4"></line><line x1="12" y1="7.6" x2="12.01" y2="7.6"></line></svg>'
+  };
+
+  function page() { return document.querySelector('.main-area .alerts-page'); }
+  function reduced() {
+    return !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion:reduce)').matches);
+  }
+
+  // ---- 数据：/api/alerts/?limit=500，30s 缓存 ----
+  var _cache = null, _cacheAt = 0, _q = null;
+  function load(force, cb) {
+    var now = Date.now();
+    if (!force && _cache && (now - _cacheAt) < 30000) { cb(_cache); return; }
+    if (_q) { _q.push(cb); return; }
+    _q = [cb];
+    var tk = '';
+    try { tk = localStorage.getItem('token') || ''; } catch (e) {}
+    var hd = { 'Content-Type': 'application/json' };
+    if (tk) hd.Authorization = 'Bearer ' + tk;
+    var done = function (arr) {
+      var q = _q; _q = null;
+      q.forEach(function (f) { try { f(arr); } catch (e) {} });
+    };
+    fetch('/api/alerts/?limit=500', { headers: hd })
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        var arr = Array.isArray(d) ? d : (d && (d.items || d.data)) || [];
+        _cache = arr; _cacheAt = Date.now();
+        done(arr);
+      })
+      .catch(function () { done(null); });
+  }
+
+  function tally(arr) {
+    if (!arr) return null;
+    var c = { total: 0, pending: 0, critical: 0, warning: 0, info: 0 };
+    arr.forEach(function (a) {
+      c.total++;
+      var lvl = a && a.alert_level ? String(a.alert_level) : '';
+      if (lvl === 'critical' || lvl === 'error') c.critical++;
+      else if (lvl === 'warning') c.warning++;
+      else if (lvl === 'info') c.info++;
+      if (!a || a.status !== 'resolved') c.pending++;
+    });
+    return c;
+  }
+
+  function pct(n, total) { return total ? Math.round((n / total) * 100) : 0; }
+
+  // ---- 卡片 ----
+  function card(label, sub, ico, bar) {
+    var el = document.createElement('article');
+    el.className = 'stat-card mc-anim';
+    if (bar) el.style.setProperty('--bar', bar);
+    el.innerHTML =
+      '<div class="stat-top"><span class="stat-icon">' + ico + '</span></div>' +
+      '<p class="stat-value">0</p>' +
+      '<p class="stat-label">' + label + '</p>' +
+      '<p class="stat-sub">' + (sub || '') + '</p>';
+    return el;
+  }
+
+  function countUp(el, to) {
+    var from = parseInt(String(el.textContent || '0').replace(/[^\d-]/g, ''), 10);
+    if (isNaN(from)) from = 0;
+    if (reduced() || from === to) { el.textContent = String(to); return; }
+    var dur = 650, t0 = (window.performance && performance.now) ? performance.now() : Date.now();
+    function step(t) {
+      var p = Math.min(1, (t - t0) / dur);
+      var e = 1 - Math.pow(1 - p, 3);
+      el.textContent = String(Math.round(from + (to - from) * e));
+      if (p < 1) requestAnimationFrame(step);
+    }
+    requestAnimationFrame(step);
+  }
+
+  function build() {
+    var g = document.createElement('div');
+    g.className = 'stat-grid';
+    g.id = ID;
+    g.appendChild(card('未处理', '', ICONS.pending, 'var(--mc-bar-1)'));
+    g.appendChild(card('严重', '', ICONS.critical, 'var(--mc-bar-4)'));
+    g.appendChild(card('警告', '', ICONS.warning, 'var(--mc-bar-3)'));
+    g.appendChild(card('信息', '', ICONS.info, 'var(--mc-bar-6)'));
+    return g;
+  }
+
+  function update(arr) {
+    var g = document.getElementById(ID);
+    if (!g) return;
+    var c = tally(arr);
+    if (!c) return;
+    var vs = g.querySelectorAll('.stat-value');
+    var ss = g.querySelectorAll('.stat-sub');
+    if (vs.length < 4) return;
+    countUp(vs[0], c.pending);
+    countUp(vs[1], c.critical);
+    countUp(vs[2], c.warning);
+    countUp(vs[3], c.info);
+    if (ss[0]) ss[0].textContent = '共 ' + c.total + ' 条';
+    if (ss[1]) ss[1].textContent = '占比 ' + pct(c.critical, c.total) + '%';
+    if (ss[2]) ss[2].textContent = '占比 ' + pct(c.warning, c.total) + '%';
+    if (ss[3]) ss[3].textContent = '占比 ' + pct(c.info, c.total) + '%';
+  }
+
+  // ---- 挂载 ----
+  function sync() {
+    if (location.pathname.replace(/\/$/, '') !== '/alerts') {
+      var old = document.getElementById(ID);
+      if (old && old.parentNode) old.parentNode.removeChild(old);
+      _sig = null;
+      return false;
+    }
+    var mp = page();
+    if (!mp) return false;
+    if (!document.getElementById(ID)) {
+      var ph = mp.querySelector('.page-header');
+      var g = build();
+      if (ph && ph.parentNode === mp) ph.insertAdjacentElement('afterend', g);
+      else mp.insertBefore(g, mp.firstChild);
+    }
+    return true;
+  }
+
+  // 状态列签名：标记解决 / 翻页后变化 → 重新取数（30s 缓存兜底防抖）
+  var _sig = null;
+  function statusSig() {
+    var mp = page();
+    if (!mp) return '';
+    return Array.prototype.slice.call(mp.querySelectorAll('.table-wrap tbody tr .col-status'))
+      .map(function (e) { return (e.textContent || '').trim(); }).join('|');
+  }
+
+  function run() {
+    if (!sync()) return;
+    var sig = statusSig();
+    if (_sig === null) { _sig = sig; load(false, update); return; }
+    if (sig !== _sig) { _sig = sig; load(false, update); return; }
+    // 未变化：仅用缓存刷新一次（首次渲染 / Vue 重抹后补回）
+    load(false, update);
+  }
+
+  var timer = null, confirm = null;
+  function schedule() {
+    if (timer) clearTimeout(timer);
+    timer = setTimeout(function () { timer = null; run(); }, 200);
+    // DOM 常分批渲染：稍后再确认一次，避免停在未稳定的中间态
+    if (confirm) clearTimeout(confirm);
+    confirm = setTimeout(function () { confirm = null; run(); }, 800);
+  }
+
+  function boot() {
+    try {
+      run();
+      var mo = new MutationObserver(schedule);
+      mo.observe(document.body, { childList: true, subtree: true, characterData: true });
+    } catch (e) {}
+  }
+
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot);
+  else boot();
+  window.addEventListener('popstate', schedule);
+  var ps = history.pushState;
+  if (ps) {
+    history.pushState = function () { var r = ps.apply(this, arguments); setTimeout(schedule, 60); return r; };
+  }
+})();

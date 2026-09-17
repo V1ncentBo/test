@@ -1,16 +1,14 @@
 """AI 大模型分析 API 路由"""
 from fastapi import APIRouter, Depends, HTTPException, Query, BackgroundTasks
 from sqlalchemy.orm import Session
-from typing import List, Optional
 from models.database import get_db, MachineInfo, AIAnalysisLog, ReportRecord, AlertLog, SessionLocal
-from models.schema import AIAnalysisRequest, AIAnalysisResponse
+from models.schema import AIAnalysisRequest
 from services.ai_service import ai_service
 from services.collector import metrics_service
 from services.alert_service import alert_service
-from datetime import datetime
 from config import bj_now
 
-from routers.auth import get_current_user, require_any_perm
+from routers.auth import require_any_perm
 router = APIRouter(prefix="/api/ai", tags=["AI智能分析"], dependencies=[Depends(require_any_perm("ai", "reports"))])
 
 

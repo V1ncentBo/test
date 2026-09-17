@@ -2,10 +2,7 @@
 设计源自 bkcmdb-port-analysis.md 第5节，表名 cmdb_* 前缀，与现有 machine_info 完全隔离。
 仅新增表，不修改任何现有表/字段。
 """
-from sqlalchemy import (
-    Column, Integer, String, Float, DateTime, Text, Boolean, JSON,
-    ForeignKey, UniqueConstraint,
-)
+from sqlalchemy import Column, Integer, String, DateTime, Boolean, JSON, UniqueConstraint
 from datetime import datetime
 from models.database import Base
 

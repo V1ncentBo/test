@@ -7,7 +7,6 @@ import hashlib
 import base64
 import urllib.parse
 import urllib.request
-from datetime import datetime
 from config import bj_now, PLATFORM_PUBLIC_URL
 
 # 告警冷却期（秒）：同机器同指标在冷却期内不重复推送

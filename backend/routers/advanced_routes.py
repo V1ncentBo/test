@@ -5,10 +5,9 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from sqlalchemy import text
 from datetime import datetime, timedelta
-from typing import Optional
 import logging
 
-from models.database import get_db, MachineInfo, AlertLog
+from models.database import get_db, MachineInfo
 
 logger = logging.getLogger("advanced")
 from routers.auth import get_current_user, require_any_perm
@@ -36,8 +35,13 @@ def set_maintenance(
     machine_id: int,
     duration_minutes: int = Query(30, ge=1, le=1440, description="静默时长(分钟)"),
     db: Session = Depends(get_db),
+    _=Depends(require_any_perm("machines")),
 ):
-    """设置设备维护静默期，期间不触发告警"""
+    """设置设备维护静默期，期间不触发告警。
+
+    PERM-20260917：维护窗口会**静默该设备的全部告警**，属高影响写操作，
+    必须纳入权限体系（此前仅需登录，任意用户可静默任意设备 → 越权降噪）。
+    """
     machine = db.query(MachineInfo).filter(MachineInfo.id == machine_id).first()
     if not machine:
         raise HTTPException(status_code=404, detail="设备不存在")
@@ -57,8 +61,9 @@ def set_maintenance(
 
 
 @router.delete("/maintenance/{machine_id}")
-def clear_maintenance(machine_id: int, db: Session = Depends(get_db)):
-    """手动解除维护静默"""
+def clear_maintenance(machine_id: int, db: Session = Depends(get_db),
+                      _=Depends(require_any_perm("machines"))):
+    """手动解除维护静默（PERM-20260917：同 set_maintenance，需设备管理权限）"""
     db.execute(text(
         "UPDATE machine_info SET maintenance_mode=0, maintenance_until=NULL WHERE id=:id"
     ), {"id": machine_id})
@@ -89,6 +94,36 @@ def list_maintenance(db: Session = Depends(get_db)):
             "remaining": remaining,
         })
     return {"code": 0, "data": items}
+
+
+@router.get("/maintenance/map")
+def maintenance_map(db: Session = Depends(get_db)):
+    """返回 {machine_id: {until, remaining_min, active}} 映射（MAINT-20260917）。
+
+    供前端一次性拿到全部维护态，用于设备列表/详情页打「维护中」徽章、
+    并对其余设备渲染「进入维护」按钮 —— 避免前端 N 次轮询。
+    `active` 由服务端按时钟判定，前端不必再算时间（避免客户端时区/时钟漂移）。
+    """
+    rows = db.execute(text(
+        "SELECT id, maintenance_mode, maintenance_until FROM machine_info"
+    )).mappings().fetchall()
+    now = datetime.now()
+    out = {}
+    for r in rows:
+        mode = int(r["maintenance_mode"] or 0)
+        until = r["maintenance_until"]
+        active = bool(mode) and (until is None or now < until)
+        if not mode:
+            continue
+        rem = None
+        if until is not None:
+            rem = max(0, int((until - now).total_seconds() // 60))
+        out[str(r["id"])] = {
+            "active": active,
+            "until": until.isoformat() if until else None,
+            "remaining_min": rem,
+        }
+    return {"code": 0, "data": out}
 
 
 # ═══════════════════════════════════════════════════════════

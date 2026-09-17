@@ -1,5 +1,5 @@
 """全域机器智能监控平台 - 主入口"""
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Query, Request
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import PlainTextResponse
 from contextlib import asynccontextmanager
@@ -9,7 +9,7 @@ import asyncio
 import time
 from datetime import datetime, timedelta
 
-from models.database import init_db, engine, SessionLocal, MachineInfo, AlertLog, AIAnalysisLog
+from models.database import init_db, SessionLocal, MachineInfo, AlertLog, AIAnalysisLog
 import models.cmdb
 import models.resource_cmdb
 from routers import machines, metrics, alerts, ai, auth, register_node
@@ -178,7 +178,12 @@ async def offline_detector():
                         m.updated_at = datetime.now()
                         db.commit()
                     # P0-3 设备离线告警（30分钟冷却，避免抖动重复）
+                    # MAINT-20260917：维护窗口内的设备主动重启/迁移会被判离线，
+                    # 这正是维护窗口要消除的头号误报 —— 窗口内不给离线告警。
                     try:
+                        from services.alert_service import _in_maintenance
+                        if _in_maintenance(m):
+                            continue
                         recent = db.query(AlertLog).filter(
                             AlertLog.machine_id == m.id,
                             AlertLog.alert_type == "device_offline",

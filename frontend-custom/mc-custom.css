@@ -243,3 +243,21 @@
 .main-area .mc-card-grid .machine-mini-card:hover .mc-mini-edit{width:24px;flex-basis:24px;opacity:1}
 .main-area .mc-card-grid .mc-mini-edit:hover{color:var(--mc-bar-1)}
 @media (prefers-reduced-motion:reduce){.main-area .mc-card-grid .machine-mini-card{animation:none!important;opacity:1!important}}
+
+/* ══ MC-MACH-GROUPS 设备管理「按分组」视图（2026-09-17 新增）══
+   数据源 /api/advanced/group-stats；外观复用 .machine-mini-card 基础规则，
+   ⚠ 内部布局必须收窄到 .mc-group-grid（与 .mc-card-grid 同理，避免污染 /monitor 原生同名 class） */
+.main-area .mc-group-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:16px;margin-bottom:14px}
+.main-area .mc-group-grid .mc-card-empty{grid-column:1/-1;padding:44px 0;text-align:center;color:var(--mc-text-3);font-size:13px}
+.main-area .mc-group-grid .machine-mini-card{display:block;cursor:pointer;opacity:0;animation:mcStatFade .5s cubic-bezier(.16,1,.3,1) both;animation-delay:calc(var(--i,0)*.05s)}
+.main-area .mc-group-grid .mini-header{display:flex;align-items:center;gap:8px;margin-bottom:6px}
+.main-area .mc-group-grid .mini-name{flex:1 1 auto;min-width:0;font-size:15px;font-weight:600;color:var(--mc-text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.main-area .mc-group-grid .mc-group-rate{flex:0 0 auto;font-size:13px;font-weight:700;font-variant-numeric:tabular-nums}
+.main-area .mc-group-grid .mini-ip{font-size:12px;color:var(--mc-text-2);margin-bottom:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.main-area .mc-group-grid .mini-metrics{display:flex;align-items:center;gap:8px}
+.main-area .mc-group-grid .mini-metrics .label{flex:0 0 34px;font-size:11px;letter-spacing:.04em;color:var(--mc-text-3)}
+.main-area .mc-group-grid .mini-metrics .mc-prog{flex:1 1 auto;min-width:0}
+.main-area .mc-group-grid .mini-metrics .mc-prog-outer{display:block;height:6px;border-radius:100px;background:rgba(148,163,184,.28);overflow:hidden}
+.main-area .mc-group-grid .mini-metrics .mc-prog-inner{display:block;height:6px;border-radius:100px;transition:width .45s cubic-bezier(.16,1,.3,1)}
+.main-area .mc-group-grid .mini-metrics .mc-prog-txt{flex:0 0 52px;text-align:right;font-size:12px;color:var(--mc-text-2);font-variant-numeric:tabular-nums}
+@media (prefers-reduced-motion:reduce){.main-area .mc-group-grid .machine-mini-card{animation:none!important;opacity:1!important}}

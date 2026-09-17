@@ -1,5 +1,5 @@
 """数据库模型定义 (含用户管理)"""
-from sqlalchemy import Column, Integer, String, Float, DateTime, Text, Boolean, Enum, create_engine, text
+from sqlalchemy import Column, Integer, String, Float, DateTime, Text, Boolean, create_engine, text
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 from datetime import datetime
@@ -84,6 +84,11 @@ class MachineInfo(Base):
     created_at = Column(DateTime, default=datetime.now, comment="创建时间")
     updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now, comment="更新时间")
     top_processes = Column(Text, default="[]", comment="TOP5进程JSON")
+    # 维护窗口（MAINT-20260917）：窗口内抑制该设备的指标/端口告警。
+    # 列已存在于 machine_info（由 advanced_routes 的维护 API 写入），此处补 ORM 映射
+    # 以便告警链路（alert_service._in_maintenance）能直接读到，无需额外原生 SQL。
+    maintenance_mode = Column(Boolean, default=False, comment="维护模式开关")
+    maintenance_until = Column(DateTime, nullable=True, comment="维护截止时间，NULL=手动常驻")
 
 
 class AlertLog(Base):

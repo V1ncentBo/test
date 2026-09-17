@@ -6,7 +6,7 @@ from models.database import get_db
 from models.schema import AlertResponse
 from services.alert_service import alert_service
 
-from routers.auth import get_current_user, require_any_perm
+from routers.auth import require_any_perm
 router = APIRouter(prefix="/api/alerts", tags=["告警管理"], dependencies=[Depends(require_any_perm("alerts", "dashboard"))])
 
 

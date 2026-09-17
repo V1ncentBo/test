@@ -2,8 +2,6 @@
 import time
 import logging
 logger = logging.getLogger("collector")
-from datetime import datetime
-from config import bj_now
 from influxdb_client import InfluxDBClient
 from config import INFLUXDB_URL, INFLUXDB_TOKEN, INFLUXDB_ORG, INFLUXDB_BUCKET
 

@@ -7,11 +7,10 @@ from typing import Optional
 from fastapi import APIRouter, HTTPException, Depends, Header, Query, Request
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
-from sqlalchemy import text
 import jwt
 import re
 
-from models.database import SessionLocal, User, get_db
+from models.database import User, get_db
 
 router = APIRouter(prefix="/api/auth", tags=["认证与用户管理"])
 

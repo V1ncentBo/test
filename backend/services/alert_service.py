@@ -15,6 +15,26 @@ PORT_ALERT_COOLDOWN = timedelta(minutes=30)
 _port_prev_errors: dict = {}
 
 
+def _in_maintenance(machine) -> bool:
+    """设备是否处于维护窗口内（MAINT-20260917）。
+
+    维护窗口用于消除「计划内重启/迁移 → 刷一堆告警」的噪音。判定：
+      maintenance_mode=1 且（maintenance_until 为空 ＝ 手动常驻，或未到期）。
+    到期后视为已退出维护（但不清库，由 /maintenance/list 的归一化逻辑呈现）。
+    """
+    if not machine:
+        return False
+    if not getattr(machine, "maintenance_mode", 0):
+        return False
+    until = getattr(machine, "maintenance_until", None)
+    if until is None:
+        return True
+    try:
+        return datetime.now() < until
+    except Exception:
+        return True
+
+
 class AlertService:
     """告警检测与记录服务"""
 
@@ -27,6 +47,9 @@ class AlertService:
 
         machine = db.query(MachineInfo).filter(MachineInfo.id == machine_id).first()
         if not machine or not machine.monitor_enabled:
+            return alerts
+        # MAINT-20260917：维护窗口内抑制指标告警（不产生新告警，也截断外呼噪音）
+        if _in_maintenance(machine):
             return alerts
 
         thresholds = {
@@ -120,6 +143,9 @@ class AlertService:
         if machine is None:
             machine = db.query(MachineInfo).filter(MachineInfo.id == machine_id).first()
         if not machine:
+            return alerts
+        # MAINT-20260917：维护窗口内抑制端口告警（网络设备割接/变更期降噪）
+        if _in_maintenance(machine):
             return alerts
         prefix = f"[{machine.name}]"
         prev_errors = _port_prev_errors.setdefault(machine_id, {})

@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 from typing import List, Optional
 from pydantic import BaseModel
 from models.database import get_db, MachineInfo
-from services.crypto import encrypt_password, decrypt_password
+from services.crypto import encrypt_password
 from models.schema import MachineCreate, MachineUpdate, MachineResponse, BatchOperation
 from services.snmp_scraper import scrape_snmp
 from datetime import datetime

@@ -4,13 +4,13 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 
 from sqlalchemy.orm import Session
 
-from typing import List, Optional
+from typing import List
 
 from models.database import get_db, MachineInfo, AlertLog
 
 from routers.auth import get_current_user, require_any_perm
 
-from models.schema import MetricData, MetricQuery, MetricSeries, DashboardStats
+from models.schema import MetricData, DashboardStats
 
 from services.collector import metrics_service
 

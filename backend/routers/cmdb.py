@@ -4,7 +4,6 @@
 """
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
-from sqlalchemy import func
 from typing import List, Optional, Any
 from pydantic import BaseModel, Field
 from datetime import datetime
@@ -86,11 +85,7 @@ class ModuleHostCreate(BaseModel):
 
 
 # ---------------- 导入模型（避免循环导入，本地导入） ----------------
-from models.cmdb import (
-    CmdbClassification, CmdbModel, CmdbModelAttribute, CmdbAssociationType,
-    CmdbModelAssociation, CmdbInstance, CmdbInstanceAssociation,
-    CmdbBusiness, CmdbSet, CmdbModule, CmdbModuleHost,
-)
+from models.cmdb import CmdbClassification, CmdbModel, CmdbModelAttribute, CmdbAssociationType, CmdbInstance, CmdbInstanceAssociation, CmdbBusiness, CmdbSet, CmdbModule, CmdbModuleHost
 
 
 # ================= 分类 =================

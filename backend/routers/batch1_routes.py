@@ -3,7 +3,6 @@ Batch 1 高级功能 — 分组聚合 / SLA趋势 / 同环比 / 指标基线 / �
 """
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
-from sqlalchemy import text
 from datetime import datetime, timedelta
 import logging, socket, json
 
@@ -102,7 +101,7 @@ def sla_trend(days: int = Query(30, ge=7, le=90), db: Session = Depends(get_db))
             try:
                 query = f'''
                 from(bucket: "{INFLUXDB_BUCKET}")
-                  |> range(start: {day_start.isoformat()}, stop: {day_end.isoformat()})
+                  |> range(start: {day_start.strftime("%Y-%m-%dT%H:%M:%SZ")}, stop: {day_end.strftime("%Y-%m-%dT%H:%M:%SZ")})
                   |> filter(fn: (r) => r["machine_id"] == "{m.id}")
                   |> filter(fn: (r) => r["_field"] == "cpu_percent")
                   |> aggregateWindow(every: 10m, fn: mean, createEmpty: false)
@@ -239,7 +238,7 @@ def get_baseline(machine_id: int):
         for metric in ["cpu_percent", "memory_percent", "disk_percent"]:
             query = f'''
             from(bucket: "{INFLUXDB_BUCKET}")
-              |> range(start: {start.isoformat()}, stop: {now.isoformat()})
+              |> range(start: {start.strftime("%Y-%m-%dT%H:%M:%SZ")}, stop: {now.strftime("%Y-%m-%dT%H:%M:%SZ")})
               |> filter(fn: (r) => r["machine_id"] == "{machine_id}")
               |> filter(fn: (r) => r["_field"] == "{metric}")
               |> aggregateWindow(every: 10m, fn: mean, createEmpty: false)

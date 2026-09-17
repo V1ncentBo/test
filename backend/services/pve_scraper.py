@@ -6,7 +6,6 @@
 import ssl
 import json
 import urllib.request
-from datetime import datetime
 
 
 def _make_ctx():

@@ -1,6 +1,6 @@
 """通知设置 API"""
 import json, os
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 from typing import Optional, List
 

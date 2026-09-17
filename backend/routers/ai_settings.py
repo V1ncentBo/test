@@ -6,11 +6,11 @@ AI 模型配置 API — 支持多模型预设导入与运行时切换
 import json
 import os
 import logging
-from typing import Optional, List
+from typing import Optional
 from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel
 
-from routers.auth import get_current_user, require_any_perm
+from routers.auth import require_any_perm
 
 logger = logging.getLogger("ai_settings")
 

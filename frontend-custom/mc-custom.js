@@ -40,6 +40,25 @@
     var _saved = null;
     var _obs = null, _obsSide = null;
 
+    /* ---- 注入页加载「防卡死」三件套（2026-09-17 修「点目录整页卡住」）----
+       旧实现：enter() 先把 .main-area 的全部子节点 display:none、并显示空的注入容器，
+       然后 fetch(注入页 HTML) —— 而那个 fetch **既无超时也无 abort**。只要连接假死
+       （既不 resolve 也不 reject），_busy 就永远为 true：
+         · 主区停在「空白」态（原内容已隐藏、注入容器还是空的）
+         · switchTo() 把之后的**每一次**点击都塞进 _pending 且永不执行
+       实测复现：挂起该请求后主区空白、点「数据库/账号管理」全无反应、等 12s 不自愈。
+       修法：① AbortController + 超时；② _busy 看门狗（超时即 abort + destroy + 补做待办）；
+             ③ 加载代号 _gen —— 过期回调一律丢弃，避免旧请求的 .catch 把新导航拆掉。 */
+    var ENTER_TIMEOUT = 6000;
+    var _gen = 0;
+    var _abort = null;
+    var _busyT = 0;
+    function endBusy() {
+      _busy = false;
+      if (_busyT) { clearTimeout(_busyT); _busyT = 0; }
+      _abort = null;
+    }
+
     var _devItem = null;
     function devItem() {
       if (_devItem && _devItem.isConnected) return _devItem;
@@ -135,7 +154,8 @@
        用 replaceState 而非 pushState：不惊动 Vue router（它不认识这些路径）。
        刷新时 Vue router 遇未知路径只影响 router-view，外壳/侧栏照常渲染，
        我们再由 maybeDeepLink 恢复注入页。 */
-    var DEEP_PAGES = ['admin-users', 'admin-options', 'resources', 'cabinets', 'physical', 'db-monitor'];
+    var DEEP_PAGES = ['admin-users', 'admin-options', 'resources', 'cabinets', 'physical', 'db-monitor',
+                      'sla-monitor', 'topology', 'capacity', 'maintenance'];
     function syncUrl() {
       try {
         var want = _active ? '/u/' + _active : '/';
@@ -179,7 +199,12 @@
       {k:'home', label:'监控总览', route:'/', perm:'dashboard'},
       {k:'dev', label:'设备管理', route:'/machines', perm:'machines'},
       {k:'db', label:'数据库', page:'db-monitor', perm:'dbs'},
-      {k:'alerts', label:'告警日志', route:'/alerts', perm:'alerts'}
+      {k:'alerts', label:'告警日志', route:'/alerts', perm:'alerts'},
+      /* 2026-09-17 新增分析层页面（后端 /api/advanced/* 早已就绪、此前无入口） */
+      {k:'sla', label:'SLA 看板', page:'sla-monitor', perm:'dashboard'},
+      {k:'topo', label:'服务拓扑', page:'topology', perm:'machines'},
+      {k:'cap', label:'容量预测', page:'capacity', perm:'machines'},
+      {k:'maint', label:'维护窗口', page:'maintenance', perm:'machines'}
     ];
     function applyRcOpen() {
       document.querySelectorAll('.sidebar-nav .rc-sub').forEach(function(a) {
@@ -188,13 +213,22 @@
       var p = document.getElementById('res-cmdb-sub');
       if (p) p.classList.toggle('open', _rcOpen);
     }
+    /* 2026-09-17 修复「资源管理点不动 / 点了没反应」：
+       旧实现是对称开关 `_rcOpen = !_rcOpen`。而 `_rcOpen` 在切到原生页时**不会被复位**
+       （goRoute() 只清 _active，不动 _rcOpen）→ 于是「先点过资源管理（子菜单已展开）→ 切到
+       告警日志 → 再点资源管理」时变成 true→false，只折叠子菜单而**完全不导航**，
+       用户看到的就是"点了没反应/菜单卡死"。
+       改为可预测语义：① 不在资源族页面时，点父级一律「展开子菜单 + 打开资源总览」；
+       ② 已在资源族页面时，才只做子菜单开合（方便收起），不做页面切换。 */
     function toggleRc() {
-      _rcOpen = !_rcOpen;
-      applyRcOpen();
-      if (_rcOpen && _active !== 'admin-options') {
-        window.__RC_TAB__ = 'overview';
-        switchTo('admin-options');
+      if (RC_PAGES[_active]) {          // 已在资源族注入页：仅开合子菜单
+        _rcOpen = !_rcOpen;
+        applyRcOpen();
+        return;
       }
+      if (!_rcOpen) { _rcOpen = true; applyRcOpen(); }  // 保证子项可见后再导航
+      window.__RC_TAB__ = 'overview';
+      switchTo('admin-options');
     }
     function ensureRcSubs() {
       var ref = document.getElementById('res-cmdb-sub');
@@ -285,6 +319,14 @@
     document.addEventListener('click', scheduleMcActive, true);
     // 退出注入页模式并经隐藏的 SPA 原生 router-link 导航（无整页刷新）
     function goRoute(route) {
+      /* 2026-09-17：作废任何「在途/待办」的注入页加载。
+         否则「点注入页 → 紧接着点原生目录」时，那个注入页的 fetch 会在原生路由之后才落地，
+         把页面内容/URL 覆盖回注入页（表现为 URL 与内容不一致、看着像卡住）。
+         ⚠ 必须同时 endBusy()：过期回调走 `if (my !== _gen) return` 不会释放 _busy，
+           而看门狗也因 `my !== _gen` 跳过 → 不同步释放就会把后续注入页点击**永久吞掉**。 */
+      _gen++;
+      _pending = null;
+      endBusy();
       destroy(); _active = ''; markSub();
       var it = findRouteItem(route);
       if (it) {
@@ -600,7 +642,19 @@
       var url = '/' + page + '.html';
       var m = getMain();
       if (!m) return;
+      var my = ++_gen; // 本次加载代号（过期回调凭它丢弃）
       _busy = true;
+      if (_busyT) { clearTimeout(_busyT); _busyT = 0; }
+      /* 看门狗：超时未完成就 abort + 复原主区 + 补做最后一次点击意图，
+         绝不让 _busy 永远挂住（否则整页菜单都点不动）。 */
+      _busyT = setTimeout(function () {
+        _busyT = 0;
+        if (!_busy || my !== _gen) return;
+        try { if (_abort) _abort.abort(); } catch (e) {}
+        _busy = false; _abort = null;
+        destroy();
+        flushPending();
+      }, ENTER_TIMEOUT);
       _saved = Array.from(m.children).filter(function(c) {
         return c.id !== ROOT_ID && !c.classList.contains('topbar');
       });
@@ -608,9 +662,28 @@
       var root = document.getElementById(ROOT_ID);
       if (!root) { root = document.createElement('div'); root.id = ROOT_ID; m.appendChild(root); }
       root.style.display = '';
-      fetch(url, { cache: 'no-store' })
+      try { if (_abort) _abort.abort(); } catch (e) {} // 取消上一次仍挂着的注入页拉取
+      var _ac = null;
+      try { _ac = (typeof AbortController !== 'undefined') ? new AbortController() : null; } catch (e) {}
+      _abort = _ac;
+      fetch(url, { cache: 'no-store', signal: _ac ? _ac.signal : undefined })
         .then(function(r) { return r.text(); })
         .then(function(text) {
+          if (my !== _gen) return; // 过期回调：期间已有更新的导航，丢弃，别覆盖当前页
+          /* 防竞态：本页仍是当前注入页时，把主区状态重新断言回来。
+             （否则若 80ms 延迟 destroy() 或原生路由回调抢先执行，会把 root 隐藏、
+               _saved 恢复显示，导致内容渲染进"看不见的 root" → 页面空白/点了没反应） */
+          if (_active === page) {
+            try {
+              var m2 = getMain();
+              if (m2) Array.from(m2.children).forEach(function (c) {
+                if (c.id !== ROOT_ID && !c.classList.contains('topbar')) c.style.display = 'none';
+              });
+              root.style.display = '';
+              document.body.classList.add('has-res-root');
+            } catch (e) {}
+            syncUrl(); // 再断言一次 /u/<page>，避免被原生路由的 pushState 覆盖
+          }
           window.__RES_INLINE__ = true;
           var doc = new DOMParser().parseFromString(text, 'text/html');
           var css = '';
@@ -643,9 +716,12 @@
           try { if (page === 'cabinets' && window.__RC_SET_ACTIVE__) window.__RC_SET_ACTIVE__('cabinets'); } catch(e) {}
           try { if (page === 'physical' && window.__RC_SET_ACTIVE__) window.__RC_SET_ACTIVE__('physical'); } catch(e) {}
           try { if (page === 'db-monitor') { var dbs = document.getElementById('mc-sub-db'); if (dbs) dbs.classList.add('active'); } } catch(e) {}
-          _busy = false;
+          endBusy();
           flushPending();
-        }).catch(function() { destroy(); _busy = false; flushPending(); });
+        }).catch(function() {
+          if (my !== _gen) return; // 旧请求被 abort / 已被新导航取代：不要拆掉当前页
+          destroy(); endBusy(); flushPending();
+        });
     }
 
     function destroy() {
@@ -656,6 +732,12 @@
       try { if (window.__resDestroy) window.__resDestroy(); } catch(e) {}
       try { if (window.__cabDestroy) window.__cabDestroy(); } catch(e) {}
       try { if (window.__phyDestroy) window.__phyDestroy(); } catch(e) {}
+      /* 2026-09-17 新增注入页的清理钩子：各自持有 setInterval / 全局事件监听，
+         不调用就会在切页后继续轮询一个已消失的 DOM（泄漏 + 无谓请求）。 */
+      try { if (window.__SLADestroy) window.__SLADestroy(); } catch(e) {}
+      try { if (window.__TPDestroy) window.__TPDestroy(); } catch(e) {}
+      try { if (window.__CAPDestroy) window.__CAPDestroy(); } catch(e) {}
+      try { if (window.__MAINTDestroy) window.__MAINTDestroy(); } catch(e) {}
       try { delete window.__RES_INLINE__; } catch(e) {}
       try { delete window.__CAB_INLINE__; } catch(e) {}
       var st = document.getElementById('res-inline-style'); if (st) st.remove();
@@ -684,9 +766,10 @@
       if (!_active) return;
       var a = (e.target && e.target.closest) ? e.target.closest('.nav-item') : null;
       if (!a || a.classList.contains('res-sub') || a.classList.contains('rc-sub') || a.classList.contains('mc-parent')) return;
+      var g = _gen; // 记下加载代号：80ms 内若有新的注入页接管，就不许再拆掉它
       _active = ''; markSub();
       _rcOpen = false; applyRcOpen();
-      setTimeout(function() { destroy(); }, 80);
+      setTimeout(function() { if (_gen !== g) return; destroy(); }, 80);
     });
 
     function watchMain() {
@@ -762,6 +845,8 @@
   }
 
   function pct(n, total) { return total ? Math.round((n / total) * 100) : 0; }
+  /* 同值不写：避免 textContent 赋值自激 MutationObserver 循环（见 countUp 注释） */
+  function setTxt(el, s) { if (el && el.textContent !== s) el.textContent = s; }
 
   function card(label, ico) {
     var el = document.createElement('article');
@@ -775,6 +860,10 @@
   }
 
   function countUp(el, to) {
+    /* ⚠ 值未变则不写 DOM（2026-09-17）：给 textContent 赋**同值**也会产生 mutation，
+        会自触发 200ms 防抖 → schedule() → run() → update() → 再赋值 → **永久 5Hz 自激循环**，
+        页面永远不"静默"（实测 /machines、/alerts 静默等待 8s 必然超时、每秒 5 次突变批次）。 */
+    if (el.textContent === String(to)) return;
     var from = parseInt(String(el.textContent || '0').replace(/[^\d-]/g, ''), 10);
     if (isNaN(from)) from = 0;
     if (reduced() || from === to) { el.textContent = String(to); return; }
@@ -797,9 +886,9 @@
     countUp(vs[0], c.total);
     countUp(vs[1], c.on);
     countUp(vs[2], c.off);
-    if (ss[0]) ss[0].textContent = '当前列表';
-    if (ss[1]) ss[1].textContent = '占比 ' + pct(c.on, c.total) + '%';
-    if (ss[2]) ss[2].textContent = '占比 ' + pct(c.off, c.total) + '%';
+    setTxt(ss[0], '当前列表');
+    setTxt(ss[1], '占比 ' + pct(c.on, c.total) + '%');
+    setTxt(ss[2], '占比 ' + pct(c.off, c.total) + '%');
   }
 
   function build() {
@@ -880,15 +969,21 @@
   'use strict';
   var ID = 'mc-mach-view';
   var GRID_ID = 'mc-mach-cards';
+  var GROUP_ID = 'mc-mach-groups';
   var LS_KEY = 'mcMachView';
   var C_OK = '#52c41a', C_WARN = '#faad14', C_BAD = '#ff4d4f';
 
   var ICON_LIST = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="8" y1="6" x2="21" y2="6"></line><line x1="8" y1="12" x2="21" y2="12"></line><line x1="8" y1="18" x2="21" y2="18"></line><line x1="3" y1="6" x2="3.01" y2="6"></line><line x1="3" y1="12" x2="3.01" y2="12"></line><line x1="3" y1="18" x2="3.01" y2="18"></line></svg>';
   var ICON_CARDS = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1.5"></rect><rect x="14" y="3" width="7" height="7" rx="1.5"></rect><rect x="3" y="14" width="7" height="7" rx="1.5"></rect><rect x="14" y="14" width="7" height="7" rx="1.5"></rect></svg>';
+  /* 2026-09-17 新增「按分组」视图：数据源 /api/advanced/group-stats（后端早已就绪、此前无入口） */
+  var ICON_GROUPS = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7h18"></path><path d="M3 12h18"></path><path d="M3 17h18"></path><circle cx="6.5" cy="7" r="1.6"></circle><circle cx="6.5" cy="12" r="1.6"></circle><circle cx="6.5" cy="17" r="1.6"></circle></svg>';
   var ICON_EDIT = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"></path><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"></path></svg>';
 
   function getView() {
-    try { return localStorage.getItem(LS_KEY) === 'cards' ? 'cards' : 'list'; } catch (e) { return 'list'; }
+    try {
+      var v = localStorage.getItem(LS_KEY);
+      return (v === 'cards' || v === 'groups') ? v : 'list';
+    } catch (e) { return 'list'; }
   }
   function setView(v) { try { localStorage.setItem(LS_KEY, v); } catch (e) {} }
   function page() { return document.querySelector('.main-area .machines-page'); }
@@ -1024,13 +1119,110 @@
     return g;
   }
 
+  /* 分组视图容器（与卡片网格同级、互斥显示）
+     ⚠ 只在 groups 模式调用：list/cards 模式绝不触碰本节点，否则「插入→mutation→sync→再插入」
+        会构成 MutationObserver 自循环，把主线程 100% 打满（2026-09-17 实测冻死）。 */
+  function ensureGroupBox() {
+    var mp = page(); if (!mp) return null;
+    var wrap = mp.querySelector('.table-wrap'); if (!wrap) return null;
+    var g = document.getElementById(GROUP_ID);
+    if (!g) {
+      g = document.createElement('div');
+      g.id = GROUP_ID; g.className = 'mc-group-grid';
+      g.style.display = 'none';           // 先隐藏再插入，避免中间态闪动
+      wrap.insertAdjacentElement('afterend', g);
+    } else if (!g.isConnected) {
+      wrap.insertAdjacentElement('afterend', g);
+    }
+    return g;
+  }
+
+  /* ---------- 分组视图（数据源 /api/advanced/group-stats） ---------- */
+  var _gLoaded = 0, _gCache = null, _gFetching = false;
+  function loadGroups(cb) {
+    // 30s 缓存：切来切去不重复请求
+    if (_gCache && (Date.now() - _gLoaded) < 30000) { cb(_gCache); return; }
+    if (_gFetching) return;              // 在途请求去重：绝不允许同一轮 sync 反复发起
+    _gFetching = true;
+    var tk = '';
+    try { tk = localStorage.getItem('token') || ''; } catch (e) {}
+    var hd = { 'Content-Type': 'application/json' };
+    if (tk) hd.Authorization = 'Bearer ' + tk;
+    fetch('/api/advanced/group-stats', { headers: hd, cache: 'no-store' })
+      .then(function (r) { return r.json().catch(function () { return null; }).then(function (j) { return { ok: r.ok, body: j }; }); })
+      .then(function (res) {
+        _gFetching = false;
+        if (!res.ok || !res.body || res.body.code !== 0) { cb(null); return; }
+        _gCache = res.body.data || []; _gLoaded = Date.now(); cb(_gCache);
+      })
+      .catch(function () { _gFetching = false; cb(null); });
+  }
+
+  function groupCard(g, i) {
+    var total = +g.total || 0, online = +g.online || 0;
+    var offline = Math.max(0, total - online);
+    var rate = total ? Math.round(online / total * 100) : 0;
+    var col = rate >= 90 ? C_OK : (rate >= 60 ? C_WARN : C_BAD);
+    var el = document.createElement('article');
+    el.className = 'machine-mini-card mc-group-card mc-anim';
+    el.setAttribute('data-mc-group', g.name || '');
+    var head = document.createElement('div');
+    head.className = 'mini-header';
+    head.innerHTML = '<span class="mini-name"></span>' +
+      '<span class="mc-group-rate" style="color:' + col + '"></span>';
+    head.querySelector('.mini-name').textContent = g.name || '未分组';
+    head.querySelector('.mc-group-rate').textContent = rate + '%';
+    var sub = document.createElement('div');
+    sub.className = 'mini-ip';
+    sub.textContent = '在线 ' + online + ' / 共 ' + total + ' 台' + (offline ? '　离线 ' + offline : '');
+    var bar = document.createElement('div');
+    bar.className = 'mini-metrics';
+    bar.innerHTML = '<span class="label">在线率</span>' +
+      '<span class="mc-prog"><span class="mc-prog-outer"><span class="mc-prog-inner" style="width:' + rate + '%;background:' + col + '"></span></span></span>' +
+      '<span class="mc-prog-txt"></span>';
+    bar.querySelector('.mc-prog-txt').textContent = online + '/' + total;
+    el.appendChild(head); el.appendChild(sub); el.appendChild(bar);
+    el.addEventListener('click', function () {
+      // 点击分组 → 切回列表并把搜索框填为该分组名（复用原生筛选，零后端依赖）
+      var inp = document.querySelector('.main-area .machines-page input[type="search"], .main-area .machines-page input[placeholder*="搜索"], .main-area .machines-page .toolbar input');
+      if (inp) {
+        inp.value = g.name || '';
+        inp.dispatchEvent(new Event('input', { bubbles: true }));
+        inp.dispatchEvent(new Event('change', { bubbles: true }));
+      }
+      setView('list'); _sig = ''; sync();
+    });
+    return el;
+  }
+
+  var _gSig = '';
+  function renderGroups(box, arr) {
+    box.innerHTML = '';
+    if (!arr || !arr.length) {
+      var e = document.createElement('div');
+      e.className = 'mc-card-empty';
+      e.textContent = '暂无分组数据';
+      box.appendChild(e);
+      return;
+    }
+    var frag = document.createDocumentFragment();
+    arr.forEach(function (g, i) {
+      var c = groupCard(g, i); stagger(c, i); frag.appendChild(c);
+    });
+    box.appendChild(frag);
+  }
+
   function applyView() {
     var mp = page(); if (!mp) return;
     var v = getView();
     var wrap = mp.querySelector('.table-wrap');
     var g = document.getElementById(GRID_ID);
-    if (wrap) wrap.style.display = (v === 'cards') ? 'none' : '';
-    if (g) g.style.display = (v === 'cards') ? '' : 'none';
+    var gb = document.getElementById(GROUP_ID);
+    /* ⚠ 只在值真的变化时写 style：写同值虽不触发 mutation（style 属性仍算 mutation），
+       但会白白制造一次属性变更 → 配合 MutationObserver 放大成抖动。 */
+    if (wrap) { var wd = (v === 'list') ? '' : 'none'; if (wrap.style.display !== wd) wrap.style.display = wd; }
+    if (g) { var gd = (v === 'cards') ? '' : 'none'; if (g.style.display !== gd) g.style.display = gd; }
+    if (gb) { var bd = (v === 'groups') ? '' : 'none'; if (gb.style.display !== bd) gb.style.display = bd; }
     var sw = document.getElementById(ID);
     if (sw) {
       Array.prototype.forEach.call(sw.querySelectorAll('.mc-vs-btn'), function (b) {
@@ -1049,13 +1241,14 @@
     sw.setAttribute('aria-label', '视图切换');
     sw.innerHTML =
       '<button class="mc-vs-btn" type="button" data-v="list" title="列表视图">' + ICON_LIST + '</button>' +
-      '<button class="mc-vs-btn" type="button" data-v="cards" title="卡片视图">' + ICON_CARDS + '</button>';
+      '<button class="mc-vs-btn" type="button" data-v="cards" title="卡片视图">' + ICON_CARDS + '</button>' +
+      '<button class="mc-vs-btn" type="button" data-v="groups" title="分组视图">' + ICON_GROUPS + '</button>';
     sw.addEventListener('click', function (e) {
       var b = (e.target && e.target.closest) ? e.target.closest('.mc-vs-btn') : null;
       if (!b) return;
       var v = b.getAttribute('data-v');
       if (v === getView()) return;
-      setView(v); _sig = ''; sync();
+      setView(v); _sig = ''; _gSig = ''; sync();
     });
     ph.appendChild(sw);
   }
@@ -1065,16 +1258,42 @@
     if (path !== '/machines') {
       var sw = document.getElementById(ID); if (sw && sw.parentNode) sw.parentNode.removeChild(sw);
       var g0 = document.getElementById(GRID_ID); if (g0 && g0.parentNode) g0.parentNode.removeChild(g0);
-      _sig = '';
+      var gb0 = document.getElementById(GROUP_ID); if (gb0 && gb0.parentNode) gb0.parentNode.removeChild(gb0);
+      _sig = ''; _gSig = '';
       return false;
     }
     if (!page()) return false;
     ensureSwitch();
-    var g = ensureGrid();
-    if (g && getView() === 'cards') {
-      var rs = rows();
-      var sig = signature(rs);
-      if (sig !== _sig) { _sig = sig; render(g, rs); }
+    var v = getView();
+    /* ⚠ 顺序很重要：只在各自的模式下创建/渲染对应容器，绝不在 list 模式碰它们
+       （否则容器插入/layout 会造成 mutation → schedule → sync 自循环，主线程冻死） */
+    if (v === 'cards') {
+      var g = ensureGrid();
+      if (g) {
+        var rs = rows();
+        var sig = signature(rs);
+        if (sig !== _sig) { _sig = sig; render(g, rs); }
+      }
+    } else if (v === 'groups') {
+      var gb = ensureGroupBox();
+      if (gb) {
+        /* 数据签名：仅当缓存内容或时间戳变化才重渲染，避免 observer 自循环 */
+        var sigNow = String(_gCache ? _gCache.length : -1) + '|' + (_gLoaded || 0);
+        if (sigNow !== _gSig) {
+          if (_gCache) {
+            _gSig = sigNow;
+            renderGroups(gb, _gCache);
+          } else {
+            loadGroups(function (arr) {
+              var box = document.getElementById(GROUP_ID);
+              if (!box) return;
+              _gSig = String(arr ? arr.length : -1) + '|' + (_gLoaded || 0);
+              renderGroups(box, arr);
+              applyView();
+            });
+          }
+        }
+      }
     }
     applyView();
     return true;
@@ -1169,6 +1388,8 @@
   }
 
   function pct(n, total) { return total ? Math.round((n / total) * 100) : 0; }
+  /* 同值不写：避免 textContent 赋值自激 MutationObserver 循环（见 countUp 注释） */
+  function setTxt(el, s) { if (el && el.textContent !== s) el.textContent = s; }
 
   // ---- 卡片 ----
   function card(label, sub, ico, bar) {
@@ -1184,6 +1405,10 @@
   }
 
   function countUp(el, to) {
+    /* ⚠ 值未变则不写 DOM（2026-09-17）：给 textContent 赋**同值**也会产生 mutation，
+        会自触发 200ms 防抖 → schedule() → run() → update() → 再赋值 → **永久 5Hz 自激循环**，
+        页面永远不"静默"（实测 /machines、/alerts 静默等待 8s 必然超时、每秒 5 次突变批次）。 */
+    if (el.textContent === String(to)) return;
     var from = parseInt(String(el.textContent || '0').replace(/[^\d-]/g, ''), 10);
     if (isNaN(from)) from = 0;
     if (reduced() || from === to) { el.textContent = String(to); return; }
@@ -1220,10 +1445,10 @@
     countUp(vs[1], c.critical);
     countUp(vs[2], c.warning);
     countUp(vs[3], c.info);
-    if (ss[0]) ss[0].textContent = '共 ' + c.total + ' 条';
-    if (ss[1]) ss[1].textContent = '占比 ' + pct(c.critical, c.total) + '%';
-    if (ss[2]) ss[2].textContent = '占比 ' + pct(c.warning, c.total) + '%';
-    if (ss[3]) ss[3].textContent = '占比 ' + pct(c.info, c.total) + '%';
+    setTxt(ss[0], '共 ' + c.total + ' 条');
+    setTxt(ss[1], '占比 ' + pct(c.critical, c.total) + '%');
+    setTxt(ss[2], '占比 ' + pct(c.warning, c.total) + '%');
+    setTxt(ss[3], '占比 ' + pct(c.info, c.total) + '%');
   }
 
   // ---- 挂载 ----

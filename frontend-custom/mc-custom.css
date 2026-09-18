@@ -261,3 +261,201 @@
 .main-area .mc-group-grid .mini-metrics .mc-prog-inner{display:block;height:6px;border-radius:100px;transition:width .45s cubic-bezier(.16,1,.3,1)}
 .main-area .mc-group-grid .mini-metrics .mc-prog-txt{flex:0 0 52px;text-align:right;font-size:12px;color:var(--mc-text-2);font-variant-numeric:tabular-nums}
 @media (prefers-reduced-motion:reduce){.main-area .mc-group-grid .machine-mini-card{animation:none!important;opacity:1!important}}
+
+/* ══ MC-MD-COMPARE 设备详情「同环比对比」panel ══
+ * 2026-09-17 新增。全部选择器收窄在 .mdc-panel / #mc-md-compare 内，
+ * 绝不做全局覆盖（遵循 mc-custom.css 的 scoped 双向边界铁律）。
+ * 颜色一律走平台既有 CSS 变量，无变量时给与原生 .chart-panel 一致的兜底色。 */
+/* ⚠ 原生 .main-area .chart-row 在 mc-custom.css 里已被改成
+ *   grid-template-columns: repeat(auto-fit, minmax(220px, 1fr))
+ *   4 个原生面板占满后，auto-fit 会再生成一个 **0px 宽的幽灵轨道**，
+ *   此时 `span 2` 会落进幽灵轨道 → 面板被压成单列宽（658px）。
+ *   修法：显式声明占满**全部**轨道（-1 表示最后一根网格线），一行独占。 */
+.mdc-panel {
+  grid-column: 1 / -1;
+  width: 100%;
+}
+.mdc-panel .mdc-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--space-3, 12px);
+  margin-bottom: var(--space-3, 12px);
+  flex-wrap: wrap;
+}
+.mdc-panel .mdc-title-wrap {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3, 12px);
+  min-width: 0;
+}
+.mdc-panel .mdc-legend {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: var(--text-xs, 11px);
+  color: var(--text-tertiary, rgba(148, 163, 184, .9));
+  letter-spacing: .02em;
+  white-space: nowrap;
+}
+.mdc-panel .mdc-legend i {
+  display: inline-block;
+  width: 14px;
+  height: 0;
+  border-top: 2px solid currentColor;
+  margin-right: 3px;
+  vertical-align: middle;
+}
+.mdc-panel .mdc-legend .mdc-l1 {
+  color: #3b82f6;
+}
+.mdc-panel .mdc-legend .mdc-l2 {
+  border-top-style: dashed;
+  color: #94a3b8;
+  margin-left: 10px;
+}
+.mdc-panel .mdc-ctrl {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2, 8px);
+  flex-wrap: wrap;
+}
+.mdc-panel .mdc-segs {
+  display: inline-flex;
+  gap: 2px;
+  background: var(--surface-default, rgba(255, 255, 255, .04));
+  border-radius: var(--radius-sm, 6px);
+  padding: 2px;
+}
+.mdc-panel .mdc-seg {
+  padding: 3px var(--space-3, 12px);
+  border: none;
+  border-radius: var(--radius-sm, 6px);
+  background: transparent;
+  color: var(--text-secondary, rgba(203, 213, 225, .9));
+  font-size: var(--text-xs, 11px);
+  font-weight: var(--weight-medium, 500);
+  cursor: pointer;
+  transition: all var(--duration-fast, .15s);
+  font-family: inherit;
+}
+.mdc-panel .mdc-seg:hover {
+  color: var(--text-primary, #f1f5f9);
+}
+.mdc-panel .mdc-seg[data-on="1"] {
+  background: var(--accent, #3b82f6);
+  color: #fff;
+}
+.mdc-panel .mdc-tab {
+  padding: 3px var(--space-3, 12px);
+  border: none;
+  border-radius: var(--radius-sm, 6px);
+  background: transparent;
+  color: var(--text-secondary, rgba(203, 213, 225, .9));
+  font-size: var(--text-xs, 11px);
+  font-weight: var(--weight-medium, 500);
+  cursor: pointer;
+  transition: all var(--duration-fast, .15s);
+  font-family: inherit;
+}
+.mdc-panel .mdc-tab:hover {
+  color: var(--text-primary, #f1f5f9);
+}
+.mdc-panel .mdc-tab[data-on="1"] {
+  background: var(--surface-raised, rgba(255, 255, 255, .1));
+  color: var(--text-primary, #f1f5f9);
+}
+
+/* KPI 三卡 */
+.mdc-panel .mdc-kpis {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: var(--space-3, 12px);
+  margin-bottom: var(--space-3, 12px);
+}
+.mdc-panel .mdc-kpi {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: var(--space-3, 10px) var(--space-4, 14px);
+  border-radius: var(--radius-md, 8px);
+  background: var(--surface-default, rgba(255, 255, 255, .03));
+  border: 1px solid oklch(70% .06 210 / .10);
+}
+.mdc-panel .mdc-kpi-k {
+  font-size: var(--text-xs, 11px);
+  color: var(--text-tertiary, rgba(148, 163, 184, .9));
+  letter-spacing: .04em;
+}
+.mdc-panel .mdc-kpi-v {
+  font-size: 20px;
+  font-weight: var(--weight-semibold, 600);
+  font-variant-numeric: tabular-nums;
+  line-height: 1.15;
+}
+.mdc-panel .mdc-kpi-s {
+  font-size: var(--text-xs, 11px);
+  color: var(--text-tertiary, rgba(148, 163, 184, .7));
+}
+
+/* 曲线 */
+.mdc-panel .mdc-chart {
+  border-radius: var(--radius-md, 8px);
+  padding: 4px 2px 2px;
+  color: var(--text-secondary, #cbd5e1);
+}
+.mdc-panel .mdc-chart svg {
+  max-width: 100%;
+}
+
+/* 基线条 */
+.mdc-panel .mdc-baseline {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3, 12px);
+  flex-wrap: wrap;
+  margin-top: var(--space-3, 12px);
+  padding-top: var(--space-3, 10px);
+  border-top: 1px solid oklch(70% .06 210 / .10);
+}
+.mdc-panel .mdc-bl-h {
+  font-size: var(--text-xs, 11px);
+  color: var(--text-tertiary, rgba(148, 163, 184, .9));
+  letter-spacing: .04em;
+  text-transform: uppercase;
+}
+.mdc-panel .mdc-bl {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--text-xs, 11px);
+  color: var(--text-secondary, rgba(203, 213, 225, .9));
+  font-variant-numeric: tabular-nums;
+}
+.mdc-panel .mdc-bl i {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex: 0 0 auto;
+}
+.mdc-panel .mdc-bl-n {
+  color: var(--text-primary, #f1f5f9);
+  font-weight: var(--weight-medium, 500);
+}
+.mdc-panel .mdc-bl-v2 {
+  color: var(--text-tertiary, rgba(148, 163, 184, .8));
+}
+
+.mdc-panel .mdc-empty {
+  padding: var(--space-6, 28px) 0;
+  text-align: center;
+  font-size: var(--text-sm, 13px);
+  color: var(--text-tertiary, rgba(148, 163, 184, .8));
+}
+
+/* 亮色主题：参考线与网格需要更强的对比 */
+:root[data-theme="light"] .mdc-panel .mdc-kpi,
+html.light .mdc-panel .mdc-kpi {
+  background: rgba(15, 23, 42, .03);
+}

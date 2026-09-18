@@ -66,43 +66,23 @@ services:
       context: ./backend
       dockerfile: Dockerfile
     container_name: monitor-backend
-    # PERF-20260915b：生产禁用 --reload。
-    # ① 镜像里的旧 CMD 带 --reload（开发特性）：/app 是 bind-mount，任何 .py 写入
-    #    （包括往 backups-*/ 目录拷 .py 备份、临时诊断脚本）都会触发全站热重启，
-    #    实测该窗口 /api/health 要等 14.5s 才返回；reloader 还常驻一个父进程+文件监视。
-    # ② ⚠ 必须单进程：本应用 lifespan 里挂着 8 个后台采集循环，且状态全在进程内
-    #    （COLLECTOR_STATS / dashboard 缓存 / WebSocket 连接表）。开 --workers 2 会让
-    #    每个 worker 各跑一遍采集 → 重复写 InfluxDB、重复告警、WS 连接表分裂
-    #    （前端连 A worker、采集器在 B worker 广播 → 推不到）。
-    #    因此这里显式不带 --workers，也不要按 Dockerfile 里的 --workers 2 执行。
-    # ③ 关掉后改后端代码需显式 `docker restart monitor-backend`（不再自动重启）。
-    command: ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
-    mem_limit: 768m
-    cpus: "2.0"
-    memswap_limit: 768m
-    # RESILIENCE-20260915：健康检查。
-    # `restart: always` 只能覆盖"进程退出"，对"进程假死（不退出但无响应）"无能为力
-    # —— 那类故障靠这个 healthcheck 标记 unhealthy，再由宿主机 monitor-watchdog.timer 自动重启。
-    # 容器内无 curl，用自带 python3 探；network_mode: host 故 127.0.0.1:8000 可达。
-    healthcheck:
-      test: ["CMD", "python3", "-c", "import urllib.request,sys;sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/api/health',timeout=4).getcode()==200 else 1)"]
-      interval: 30s
-      timeout: 8s
-      retries: 3
-      start_period: 45s
+    mem_limit: 512m
+    cpus: "1.0"
+    memswap_limit: 512m
     env_file:
       - .env
     restart: always
-    network_mode: host
+    ports:
+      - "8000:8000"
     environment:
       # ⚠️ 时区锁定为北京时间，禁止修改！
       TZ: Asia/Shanghai
-      MYSQL_HOST: 127.0.0.1
+      MYSQL_HOST: mysql
       MYSQL_PORT: 3306
       MYSQL_USER: monitor
       MYSQL_PASSWORD: ${MYSQL_PASSWORD:?请在 .env 中设置}
       MYSQL_DATABASE: monitor_platform
-      INFLUXDB_URL: http://127.0.0.1:8086
+      INFLUXDB_URL: http://influxdb:8086
       INFLUXDB_TOKEN: ${INFLUXDB_TOKEN:?请在 .env 中设置}
       INFLUXDB_ORG: monitor-org
       INFLUXDB_BUCKET: machine_metrics
@@ -115,37 +95,49 @@ services:
       JWT_SECRET: ${JWT_SECRET:?请在 .env 中设置}
     volumes:
       - ./backend:/app
+      # FILELIB-20260918：运维文件库。文件落独立 200G 盘 /opt/monitor-platform/filelib
+      # （ext4, UUID=aacec267-5b57-4817-819a-204033f950d6，已写 fstab）。
+      # ⚠ 独立挂载卷，不参与 docker commit —— 否则几十 G 镜像会被烤进镜像层。
+      - ./filelib:/app/filelib
     depends_on:
       mysql:
         condition: service_healthy
       influxdb:
         condition: service_healthy
+    networks:
+      - monitor-net
+    # RESILIENCE：健康检查。注意镜像内**无 curl**，只能用自带 python3 探活。
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/api/health', timeout=5).status==200 else 1)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
 
   # ============ Vue3 前端服务 ============
   frontend:
+    # ⛔ COMPOSE-SYNC-20260918：必须指向 :optimized（当前 = optimized-fileshelf-20260918）。
+    # 此前写 monitor-platform-frontend:latest（旧镜像），一旦 compose 重建前端就会
+    # 把全部热修（mc-custom.{js,css} / filelib.html 等注入页）抹掉！这是本项目最贵的坑。
+    # 热修后的固化流程见 SKILL monitor-frontend-ops：docker commit → tag :optimized。
     image: monitor-frontend:optimized
     container_name: monitor-frontend
     mem_limit: 128m
     cpus: "0.5"
     restart: always
-    # RESILIENCE-20260915：nginx 假死（进程在但 80 不响应）由 healthcheck 标记，
-    # 再交给 monitor-watchdog.timer 自动重启。镜像内有 curl。
-    healthcheck:
-      test: ["CMD", "curl", "-fsS", "-o", "/dev/null", "http://127.0.0.1/"]
-      interval: 30s
-      timeout: 5s
-      retries: 3
-      start_period: 15s
     ports:
       - "80:80"
-      - "443:443"
-    volumes:
-      - ./nginx/https.conf:/etc/nginx/conf.d/https.conf:ro
-      - ./nginx/ssl:/etc/nginx/ssl:ro
     depends_on:
       - backend
     networks:
       - monitor-net
+    # RESILIENCE：nginx 镜像自带 curl 探首页。
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "-o", "/dev/null", "http://127.0.0.1/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
 
   # ============ 采集 Agent ============
   collector:
@@ -175,6 +167,11 @@ volumes:
 
 networks:
   monitor-net:
+    # COMPOSE-SYNC-20260918：显式锁定网络真名。
+    # 此前只写 driver，实际名称由 compose 用「目录名_网络名」展开成
+    # monitor-platform_monitor-net —— 一旦目录改名/换项目名，网络就会漂移。
+    # 这里显式声明，与线上 docker network ls 实际一致。
+    name: monitor-platform_monitor-net
     driver: bridge
 
 

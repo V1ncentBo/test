@@ -34,8 +34,13 @@
     function flushPending() {
       if (!_pending) return;
       var p = _pending; _pending = null;
-      if (p === _active) return; // 已经落在这一页了：别把刚加载好的页再 toggle 关掉
+      if (p === _active) { afterBusySyncUser(); return; } // 已经落在这一页了：别把刚加载好的页再 toggle 关掉
       switchTo(p);
+    }
+    /* 连点补做后，若最终停在账号管理页，手工高亮必须仍在（_stress_pending T3 曾因
+       toggleRc/markSub 的 clearNavActive 把高亮摘掉而偶发 hl=[]）。幂等、无副作用。 */
+    function afterBusySyncUser() {
+      if (_active === 'admin-users') { try { setHl(userItem()); } catch (e) {} }
     }
     var _saved = null;
     var _obs = null, _obsSide = null;
@@ -115,7 +120,7 @@
     }
     /* 注入页 → 是否属于「资源管理」族：只有这些页才点亮资源管理父级。
        账号管理(admin-users) 等独立注入页不再误点亮资源管理（2026-09-08 修复） */
-    var RC_PAGES = { 'admin-options': 1, 'resources': 1, 'cabinets': 1, 'physical': 1 };
+    var RC_PAGES = { 'admin-options': 1, 'resources': 1, 'cabinets': 1, 'physical': 1, 'filelib': 1 };
     /* 手工高亮：账号管理点开的是注入页，原生路由并未跳转，Vue 不会给它 active，
        需要我们自己加/摘（_hlEl 保存元素引用，Vue 重渲染后可重新定位） */
     var _hlEl = null;
@@ -155,7 +160,7 @@
        刷新时 Vue router 遇未知路径只影响 router-view，外壳/侧栏照常渲染，
        我们再由 maybeDeepLink 恢复注入页。 */
     var DEEP_PAGES = ['admin-users', 'admin-options', 'resources', 'cabinets', 'physical', 'db-monitor',
-                      'sla-monitor', 'topology', 'capacity', 'maintenance'];
+                      'sla-monitor', 'topology', 'capacity', 'maintenance', 'filelib'];
     function syncUrl() {
       try {
         var want = _active ? '/u/' + _active : '/';
@@ -190,7 +195,10 @@
       {k:'physical', label:'硬件台账', perm:'physical'},
       {k:'proj', label:'项目管理', perm:'proj'},
       {k:'owner', label:'负责人', perm:'owner'},
-      {k:'cabinets', label:'机房机柜', perm:'cabinets'}
+      {k:'cabinets', label:'机房机柜', perm:'cabinets'},
+      /* 2026-09-18：运维文件库（镜像/服务包上传下载审计）。
+         后端 /api/files/* 独立路由；页面 filelib.html 独立静态页。 */
+      {k:'filelib', label:'运维文件库', perm:'filelib', page:'filelib'}
     ];
     /* 监控中心二级子项（需求①：监控详情/告警日志挂监控中心，不挂资源管理）
        2026-09-16：删除「监控详情」子项 —— 设备管理页新增的「列表/卡片」视图已完全覆盖该列表页功能；
@@ -248,6 +256,10 @@
           if (s.route) { goRoute(s.route); return; }
           if (s.k === 'cabinets') { switchTo('cabinets'); return; }
           if (s.k === 'physical') { switchTo('physical'); return; }
+          /* 2026-09-18：带 page 字段的子项 = 独立注入页（运维文件库）。
+             必须显式 switchTo(s.page)，否则会落进下面 admin-options 的资源内 tab 分支，
+             开出的会是资源总览页而非文件库。 */
+          if (s.page) { switchTo(s.page); return; }
           if (_active === 'admin-options' && window.__RC_GOTO__) {
             window.__RC_GOTO__(s.k);
           } else {
@@ -359,7 +371,24 @@
     // （原 hideMovedTopItems 已删除：顶级隐藏改由 CSS 属性选择器完成，Vue 重渲染也不会失效）
 
     // admin 页调用：高亮当前子项 / 更新数量角标
+    /* ⚠ 防「过期注入页脚本覆盖高亮」（2026-09-17 修 _stress_pending T2/T3）：
+       场景「账号管理(加载中) → 资源管理父级 → 硬件台账/账号管理」连点：
+         · toggleRc() 把 admin-options 排入 _pending（其 HTML 被注入、内联脚本立即执行）；
+         · 随后被 physical / admin-users 取代，最终页正确渲染；
+         · 但 admin-options 的**异步 load()** 稍后才完成，其 go() 末尾调用 __RC_SET_ACTIVE__(k)
+           → 用陈旧的 __RC_TAB__ 覆盖当前页的子项高亮（URL/内容都对，只有侧栏错）。
+       这里以 **当前真正打开的注入页 `_active`** 做真源校验（不再用独立变量，避免 destroy 时序坑）：
+         · `_active === 'admin-options'` 时，overview/resources/proj/owner 都是它的 tab → 受理；
+         · 否则只受理与 `_active` 同名的键（physical/cabinets/resources…）；
+         · `''` / '__none__'（明确熄灭）与 `_active` 为空时永远受理（不挡正常初始化）。 */
     window.__RC_SET_ACTIVE__ = function(k) {
+      try {
+        var isNone = (k === '' || k === '__none__');
+        if (!isNone && _active) {
+          var tabHost = (_active === 'admin-options' && ['overview', 'resources', 'proj', 'owner', 'pve'].indexOf(k) >= 0);
+          if (!tabHost && _active !== k) return; // 过期页脚本：丢弃
+        }
+      } catch (e) {}
       document.querySelectorAll('.sidebar-nav .rc-sub').forEach(function(a) {
         a.classList.toggle('active', a.id === 'rc-sub-' + k);
       });
@@ -565,7 +594,12 @@
       location.reload();
     }
     function openUserMgmt() {
-      if (_active === 'admin-users') return;
+      /* ⚠ 已在账号管理页时**不能直接 return**（2026-09-17 修 _stress_pending T3）：
+         场景「账号管理 → 资源管理父级 → 账号管理」三连点：
+           · 第 2 次点击(toggleRc/markSub)会 clearNavActive() + setHl(null)，把账号管理的手工高亮摘掉；
+           · 第 3 次点击若因 _active 仍为 'admin-users' 而提前 return，高亮就**永久丢失**（侧栏整列无高亮）。
+         这里改为：重复进入同一页时至少把手工高亮重新贴回（幂等，无副作用）。 */
+      if (_active === 'admin-users') { setHl(userItem()); return; }
       window.__RC_TAB__ = 'users';
       switchTo('admin-users');
       setHl(userItem()); // 注入页不带原生路由，手工给「账号管理」加高亮
@@ -715,7 +749,15 @@
           root.appendChild(fix);
           try { if (page === 'cabinets' && window.__RC_SET_ACTIVE__) window.__RC_SET_ACTIVE__('cabinets'); } catch(e) {}
           try { if (page === 'physical' && window.__RC_SET_ACTIVE__) window.__RC_SET_ACTIVE__('physical'); } catch(e) {}
+          /* 通用兜底：任何直接对应 rc-sub 的注入页，进入后都以其自身 k 点亮子项，
+             不依赖各页内联脚本是否调用了 __RC_SET_ACTIVE__（也修正 __RC_TAB__ 陈旧的情况）。 */
+          try {
+            if (window.__RC_SET_ACTIVE__ && RC_SUBS.some(function (x) { return x.k === page; })) {
+              window.__RC_SET_ACTIVE__(page);
+            }
+          } catch(e) {}
           try { if (page === 'db-monitor') { var dbs = document.getElementById('mc-sub-db'); if (dbs) dbs.classList.add('active'); } } catch(e) {}
+          if (page === 'admin-users') afterBusySyncUser();
           endBusy();
           flushPending();
         }).catch(function() {
@@ -788,6 +830,27 @@
     }
     // 性能：60ms 防抖，只监听直接子节点变化（不监听 subtree，避免 hover/动画/状态变化频繁触发）
     var _mainT = 0, _sideT = 0;
+    /* 幂等的侧栏注入链（renameDevItem 会 return 短路，但注入节点需各自判存在） */
+    function injectSide() {
+      renameDevItem(); ensureMcSub(); ensureSub(); ensureRcSubs(); syncMcActive();
+      if (_acctState) ensureAcctWidget();
+      maybeDeepLink();
+    }
+    /* ⚠ 自愈（2026-09-17 修「侧栏偶发只剩 9 项、资源管理整族消失」）：
+       boot() 早期 document.querySelector('.sidebar-nav') 可能命中一个**随后被 Vue 丢弃的中间态 nav**：
+       此时我们把 mc-parent / 所有 mc-sub-* / res-cmdb-sub / rc-sub-* 全插进去了，但 Vue 重渲染把整棵子树换掉
+       → 注入节点全灭，而 _obsSide 观察的是**已脱离文档的旧 nav**，childList 再也不触发
+       → 侧栏永久停在原生 9 项（资源管理/数据库/SLA 等全无）。
+       下面这个 1s 巡检做两件事：① nav 节点身份变了就重挂观察器；② 关键锚点缺失就重跑注入链。
+       代价极低（仅 3 次 getElementById），且天然覆盖 Vue 任意次重渲染。 */
+    var _sideNavRef = null;
+    function maintainSide() {
+      var nav = document.querySelector('.sidebar-nav');
+      if (!nav) return;
+      if (nav !== _sideNavRef) { _sideNavRef = nav; watchSide(); }
+      // 关键锚点缺失 ⇒ Vue 抹掉了注入 ⇒ 立刻补回（injectSide 幂等）
+      if (!document.getElementById('mc-parent') || !document.getElementById('res-cmdb-sub')) injectSide();
+    }
     function watchSide() {
       if (_obsSide) { try { _obsSide.disconnect(); } catch(e) {} }
       var nav = document.querySelector('.sidebar-nav');
@@ -796,9 +859,7 @@
         if (_sideT) return;
         _sideT = setTimeout(function() {
           _sideT = 0;
-          renameDevItem(); ensureMcSub(); ensureSub(); ensureRcSubs(); syncMcActive();
-          if (_acctState) ensureAcctWidget();
-          maybeDeepLink();
+          injectSide();
         }, 60);
       });
       _obsSide.observe(nav, { childList: true });
@@ -806,7 +867,13 @@
 
     var _t = 0;
     (function boot() {
-      if (document.querySelector('.sidebar-nav')) { renameDevItem(); ensureMcSub(); ensureSub(); ensureRcSubs(); watchMain(); watchSide(); refreshRcCounts(); fetchMe(function (st) { ensureAcctWidget(); maybeDeepLink(); }); syncMcActive(); setTimeout(syncMcActive, 600); }
+      if (document.querySelector('.sidebar-nav')) {
+        injectSide(); watchMain(); watchSide(); refreshRcCounts();
+        fetchMe(function (st) { ensureAcctWidget(); maybeDeepLink(); });
+        syncMcActive(); setTimeout(syncMcActive, 600);
+        // 自愈巡检：1s 间隔，仅在锚点缺失时真干活
+        setInterval(maintainSide, 1000);
+      }
       else if (_t++ < 300) setTimeout(boot, 250);
     })();
   })();
@@ -1511,5 +1578,346 @@
   var ps = history.pushState;
   if (ps) {
     history.pushState = function () { var r = ps.apply(this, arguments); setTimeout(schedule, 60); return r; };
+  }
+})();
+
+/* ══ MC-MD-COMPARE 设备详情「对比」panel ══ */
+/* ===MC-MD-COMPARE 2026-09-17 设备详情同环比===
+ * 目标：把后端早已就绪但前端无入口的两个接口接上设备详情页 /monitor/:id
+ *   GET /api/advanced/compare/{id}?metric=&period=   → 本期 vs 上期 曲线 + 均值 + 变化率
+ *   GET /api/advanced/baseline/{id}                  → 14 天基线 mean/std（3 指标）
+ * 载体：原生 .detail-page 下的 .chart-row（2 列网格）末尾追加一个 <section class="chart-panel">
+ *  - 复用原生 .chart-panel/.chart-header/.chart-title 视觉（零视觉割裂）
+ *  - 图形自绘 SVG（原生图是 ECharts 实例，外部脚本无法安全复用其 option）
+ *  - 不引入任何新依赖、不做全局样式覆盖
+ * 安全：所有网络请求带 Bearer；异常一律静默降级为占位文案，绝不抛错影响原生页面
+ */
+(function () {
+  'use strict';
+
+  var HOST_ID = 'mc-md-compare';
+  var PAGE_SEL = '.main-area .detail-page';
+  var ROW_SEL = '.chart-row';
+
+  var METRICS = [
+    { k: 'cpu_percent', label: 'CPU', color: '#3b82f6' },
+    { k: 'memory_percent', label: '内存', color: '#a855f7' },
+    { k: 'disk_percent', label: '磁盘', color: '#f59e0b' }
+  ];
+  var PERIODS = [
+    { k: '24h', label: '24h' },
+    { k: '7d', label: '7d' },
+    { k: '30d', label: '30d' }
+  ];
+  var BAD = '#f87171', GOOD = '#34d399', NEU = '#94a3b8';
+
+  var ST = { metric: 'cpu_percent', period: '24h', loading: false, id: 0, data: null, sig: '' };
+
+  function esc(s) {
+    return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
+      return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c];
+    });
+  }
+  function authHeaders() {
+    var t = '';
+    try { t = localStorage.getItem('token') || ''; } catch (e) {}
+    return t ? { Authorization: 'Bearer ' + t } : {};
+  }
+  function pathId() {
+    var m = (location.pathname || '').match(/\/monitor\/(\d+)/);
+    return m ? parseInt(m[1], 10) : 0;
+  }
+  function num(v) { return (typeof v === 'number' && isFinite(v)) ? v : 0; }
+  function fmt(v, d) {
+    var n = Number(v);
+    if (!isFinite(n)) return '—';
+    return n.toFixed(d == null ? 1 : d);
+  }
+
+  /* ── 自绘 SVG 折线图：本期实线 + 上期虚线，纵轴自适应，含警戒/严重参考线 ── */
+  function chartSVG(cur, prev, color) {
+    var W = 660, H = 190, PL = 42, PR = 14, PT = 12, PB = 24;
+    var iw = W - PL - PR, ih = H - PT - PB;
+    var series = [];
+    (cur || []).forEach(function (p) { series.push(num(p.value)); });
+    (prev || []).forEach(function (p) { series.push(num(p.value)); });
+    if (!series.length) return '';
+
+    var mn = Math.min.apply(null, series), mx = Math.max.apply(null, series);
+    if (mx <= 0) { mx = 1; }
+    var pad = (mx - mn) * 0.12 || 1;
+    var lo = Math.max(0, mn - pad), hi = mx + pad;
+    var span = (hi - lo) || 1;
+
+    function X(i, n) { return PL + (n <= 1 ? iw / 2 : iw * i / (n - 1)); }
+    function Y(v) { return PT + ih - ih * (Math.max(lo, Math.min(hi, v)) - lo) / span; }
+    function d(pts) {
+      if (!pts.length) return '';
+      return pts.map(function (p, i) {
+        return (i ? 'L' : 'M') + X(i, pts.length).toFixed(1) + ' ' + Y(num(p.value)).toFixed(1);
+      }).join(' ');
+    }
+
+    var g = [];
+    // 网格 + 纵轴刻度（5 档）
+    for (var t = 0; t <= 4; t++) {
+      var yv = lo + span * t / 4, y = Y(yv);
+      g.push('<line x1="' + PL + '" y1="' + y.toFixed(1) + '" x2="' + (W - PR) + '" y2="' + y.toFixed(1) +
+        '" stroke="currentColor" stroke-opacity="0.10" stroke-width="1"/>');
+      g.push('<text x="' + (PL - 7) + '" y="' + (y + 3.5).toFixed(1) + '" text-anchor="end" font-size="10" fill="currentColor" fill-opacity="0.45">' +
+        esc(fmt(yv, 0)) + '</text>');
+    }
+    // 警戒(60)/严重(80) 参考线
+    [[60, BAD, '0.45'], [80, BAD, '0.55']].forEach(function (r) {
+      if (r[0] < lo || r[0] > hi) return;
+      var y = Y(r[0]);
+      g.push('<line x1="' + PL + '" y1="' + y.toFixed(1) + '" x2="' + (W - PR) + '" y2="' + y.toFixed(1) +
+        '" stroke="' + r[1] + '" stroke-opacity="' + r[2] + '" stroke-width="1" stroke-dasharray="4 4"/>');
+    });
+    // 上期（虚线、低透明度）
+    if (prev && prev.length) {
+      g.push('<path d="' + d(prev) + '" fill="none" stroke="' + NEU + '" stroke-opacity="0.75" stroke-width="1.5" stroke-dasharray="5 4" stroke-linejoin="round" stroke-linecap="round"/>');
+    }
+    // 本期（实线 + 渐变面积）
+    if (cur && cur.length) {
+      var gid = 'mcg-' + Math.abs((ST.id * 31 + (color || '').length));
+      var area = d(cur) + ' L' + X(cur.length - 1, cur.length).toFixed(1) + ' ' + (PT + ih) +
+        ' L' + X(0, cur.length).toFixed(1) + ' ' + (PT + ih) + ' Z';
+      g.unshift('<defs><linearGradient id="' + gid + '" x1="0" y1="0" x2="0" y2="1">' +
+        '<stop offset="0%" stop-color="' + color + '" stop-opacity="0.30"/>' +
+        '<stop offset="100%" stop-color="' + color + '" stop-opacity="0.02"/></linearGradient></defs>');
+      g.push('<path d="' + area + '" fill="url(#' + gid + ')"/>');
+      g.push('<path d="' + d(cur) + '" fill="none" stroke="' + color + '" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>');
+      // 末点高亮
+      g.push('<circle cx="' + X(cur.length - 1, cur.length).toFixed(1) + '" cy="' + Y(num(cur[cur.length - 1].value)).toFixed(1) + '" r="3" fill="' + color + '"/>');
+    }
+    return '<svg viewBox="0 0 ' + W + ' ' + H + '" width="100%" height="' + H + '" preserveAspectRatio="none" style="display:block;overflow:visible">' + g.join('') + '</svg>';
+  }
+
+  /* ── 骨架 ── */
+  function shell() {
+    var mt = METRICS.map(function (m) {
+      return '<button type="button" class="mdc-seg" data-metric="' + m.k + '"' +
+        (ST.metric === m.k ? ' data-on="1"' : '') + '>' + esc(m.label) + '</button>';
+    }).join('');
+    var pt = PERIODS.map(function (p) {
+      return '<button type="button" class="mdc-tab" data-period="' + p.k + '"' +
+        (ST.period === p.k ? ' data-on="1"' : '') + '>' + esc(p.label) + '</button>';
+    }).join('');
+    return '' +
+      '<div class="mdc-head">' +
+        '<div class="mdc-title-wrap"><h4 class="chart-title mdc-title">同环比对比</h4>' +
+          '<span class="mdc-legend"><i class="mdc-l1"></i>本期<i class="mdc-l2"></i>上期</span>' +
+        '</div>' +
+        '<div class="mdc-ctrl"><div class="mdc-segs">' + mt + '</div>' +
+          '<div class="time-tabs mdc-tabs">' + pt + '</div></div>' +
+      '</div>' +
+      '<div class="mdc-body" id="mc-mdc-body"><div class="mdc-empty">加载中…</div></div>';
+  }
+
+  /* ── 渲染体（KPI 三卡 + 曲线 + 基线） ── */
+  function body() {
+    var d = ST.data;
+    if (!d) return '<div class="mdc-empty">暂无对比数据</div>';
+    if (d.error) return '<div class="mdc-empty">数据获取失败：' + esc(d.error) + '</div>';
+    var m = null;
+    for (var i = 0; i < METRICS.length; i++) if (METRICS[i].k === ST.metric) m = METRICS[i];
+    var chg = num(d.change_pct);
+    var trend = d.trend || 'stable';
+    var cCol = trend === 'up' ? BAD : trend === 'down' ? GOOD : NEU;
+    var arrow = trend === 'up' ? '▲' : trend === 'down' ? '▼' : '—';
+
+    var kpis = [
+      { k: '本期均值', v: fmt(d.avg_current) + '%', s: (ST.data && d.current_series ? (d.current_series.length + ' 个采样点') : '') , c: m ? m.color : '' },
+      { k: '上期均值', v: fmt(d.avg_previous) + '%', s: (d.previous_series ? (d.previous_series.length + ' 个采样点') : ''), c: NEU },
+      { k: '环比变化', v: arrow + ' ' + (chg > 0 ? '+' : '') + fmt(chg) + '%', s: trend === 'up' ? '上升' : trend === 'down' ? '下降' : '平稳', c: cCol }
+    ].map(function (x) {
+      return '<div class="mdc-kpi"><span class="mdc-kpi-k">' + esc(x.k) + '</span>' +
+        '<span class="mdc-kpi-v" style="color:' + (x.c || 'inherit') + '">' + esc(x.v) + '</span>' +
+        '<span class="mdc-kpi-s">' + esc(x.s) + '</span></div>';
+    }).join('');
+
+    var svg = chartSVG(d.current_series, d.previous_series, m ? m.color : '#3b82f6');
+    var chart = svg || '<div class="mdc-empty" style="height:190px;display:flex;align-items:center;justify-content:center">该周期无采样数据</div>';
+
+    // 基线（14 天 mean/std）小表
+    var b = ST.baseline || {};
+    var bl = METRICS.map(function (x) {
+      var o = b[x.k] || {};
+      var mean = o.mean != null ? fmt(o.mean) : '—';
+      var std = o.std != null ? fmt(o.std) : '—';
+      return '<div class="mdc-bl"><i style="background:' + x.color + '"></i>' +
+        '<span class="mdc-bl-n">' + esc(x.label) + '</span>' +
+        '<span class="mdc-bl-v">μ ' + esc(mean) + '</span>' +
+        '<span class="mdc-bl-v2">σ ' + esc(std) + '</span></div>';
+    }).join('');
+
+    return '<div class="mdc-kpis">' + kpis + '</div>' +
+      '<div class="mdc-chart">' + chart + '</div>' +
+      '<div class="mdc-baseline"><span class="mdc-bl-h">14 天基线</span>' + bl + '</div>';
+  }
+
+  function paintBody() {
+    var el = document.getElementById('mc-mdc-body');
+    if (!el) return;
+    var html = body();
+    if (el.innerHTML !== html) el.innerHTML = html;
+  }
+
+  /* ── 取数 ── */
+  function load(baselineToo) {
+    if (!ST.id) return;
+    var my = ST.id + '|' + ST.metric + '|' + ST.period;
+    ST.loading = true; ST.sig = my;
+    var url = '/api/advanced/compare/' + ST.id + '?metric=' + encodeURIComponent(ST.metric) + '&period=' + encodeURIComponent(ST.period);
+    fetch(url, { headers: authHeaders() })
+      .then(function (r) { return r.json(); })
+      .then(function (j) {
+        if (ST.sig !== my) return; // 过期响应丢弃
+        var d = (j && j.data) ? j.data : { error: (j && j.msg) || '响应异常' };
+        if (d.error) d.error = String(d.error).slice(0, 120);
+        ST.data = d; ST.loading = false;
+        paintBody();
+      })
+      .catch(function (e) {
+        if (ST.sig !== my) return;
+        ST.data = { error: '网络错误' }; ST.loading = false; paintBody();
+      });
+    if (baselineToo) {
+      fetch('/api/advanced/baseline/' + ST.id, { headers: authHeaders() })
+        .then(function (r) { return r.json(); })
+        .then(function (j) {
+          if (ST.sig !== my) return;
+          ST.baseline = (j && j.data) ? j.data : {};
+          paintBody();
+        })
+        .catch(function () {});
+    }
+  }
+
+  /* ── 挂载/替换 ── */
+  function host() {
+    var dp = document.querySelector(PAGE_SEL);
+    if (!dp) return null;
+    return dp.querySelector('#' + HOST_ID);
+  }
+
+  function mount() {
+    var id = pathId();
+    if (!id) { unmount(); return; }
+    var dp = document.querySelector(PAGE_SEL);
+    if (!dp) return;
+    var row = dp.querySelector(ROW_SEL);
+    if (!row) return; // 图表区没渲染完，等下轮
+
+    var h = document.getElementById(HOST_ID);
+    if (h && h.parentElement === row) {
+      if (ST.id !== id) { ST.id = id; ST.data = null; ST.baseline = null; paint(); load(true); }
+      return;
+    }
+    if (h && h.parentElement !== row) h.parentNode.removeChild(h);
+
+    ST.id = id; ST.data = null; ST.baseline = null;
+    var sec = document.createElement('section');
+    sec.className = 'chart-panel mdc-panel';
+    sec.id = HOST_ID;
+    sec.setAttribute('data-v-mdc', '1');
+    sec.innerHTML = '<div class="mdc-head"><div class="mdc-title-wrap"><h4 class="chart-title mdc-title">同环比对比</h4></div><div class="mdc-ctrl"></div></div><div class="mdc-body" id="mc-mdc-body"><div class="mdc-empty">加载中…</div></div>';
+    row.appendChild(sec);
+    paint();
+    load(true);
+  }
+
+  function paint() {
+    var sec = document.getElementById(HOST_ID);
+    if (!sec) return;
+    var head = sec.querySelector('.mdc-head');
+    if (head) {
+      // 仅重建头部控件（保留 body 节点身份，避免闪烁）
+      var wrap = sec.querySelector('.mdc-title-wrap');
+      var ctrl = sec.querySelector('.mdc-ctrl');
+      if (wrap && !wrap.querySelector('.mdc-legend')) {
+        wrap.insertAdjacentHTML('beforeend', '<span class="mdc-legend"><i class="mdc-l1"></i>本期<i class="mdc-l2"></i>上期</span>');
+      }
+      if (ctrl && !ctrl.children.length) {
+        var mt = METRICS.map(function (m) {
+          return '<button type="button" class="mdc-seg" data-metric="' + m.k + '"' + (ST.metric === m.k ? ' data-on="1"' : '') + '>' + esc(m.label) + '</button>';
+        }).join('');
+        var pt = PERIODS.map(function (p) {
+          return '<button type="button" class="mdc-tab" data-period="' + p.k + '"' + (ST.period === p.k ? ' data-on="1"' : '') + '>' + esc(p.label) + '</button>';
+        }).join('');
+        ctrl.innerHTML = '<div class="mdc-segs">' + mt + '</div><div class="time-tabs mdc-tabs">' + pt + '</div>';
+      }
+    }
+    paintBody();
+  }
+
+  function syncSeg() {
+    var sec = document.getElementById(HOST_ID);
+    if (!sec) return;
+    Array.prototype.forEach.call(sec.querySelectorAll('.mdc-seg'), function (b) {
+      if (b.getAttribute('data-metric') === ST.metric) b.setAttribute('data-on', '1');
+      else b.removeAttribute('data-on');
+    });
+    Array.prototype.forEach.call(sec.querySelectorAll('.mdc-tab'), function (b) {
+      if (b.getAttribute('data-period') === ST.period) b.setAttribute('data-on', '1');
+      else b.removeAttribute('data-on');
+    });
+  }
+
+  function unmount() {
+    var h = document.getElementById(HOST_ID);
+    if (h && h.parentNode) h.parentNode.removeChild(h);
+    ST.id = 0; ST.data = null; ST.baseline = null;
+  }
+
+  /* ── 事件（委托在 document，避免 Vue 重渲染后失效） ── */
+  document.addEventListener('click', function (e) {
+    var t = e.target;
+    if (!t || !t.closest) return;
+    var seg = t.closest('#' + HOST_ID + ' .mdc-seg');
+    if (seg) {
+      var mk = seg.getAttribute('data-metric');
+      if (mk && mk !== ST.metric) { ST.metric = mk; syncSeg(); load(false); }
+      return;
+    }
+    var tab = t.closest('#' + HOST_ID + ' .mdc-tab');
+    if (tab) {
+      var pk = tab.getAttribute('data-period');
+      if (pk && pk !== ST.period) { ST.period = pk; syncSeg(); load(false); }
+      return;
+    }
+  }, true);
+
+  /* ── 路由感知的巡检（含 Vue 重渲染自愈） ── */
+  var timer = null, confirm = null;
+  function schedule() {
+    if (timer) clearTimeout(timer);
+    timer = setTimeout(function () { timer = null; mount(); }, 180);
+    if (confirm) clearTimeout(confirm);
+    confirm = setTimeout(function () { confirm = null; mount(); }, 900);
+  }
+
+  var _last = location.pathname;
+  function boot() {
+    try {
+      mount();
+      var mo = new MutationObserver(schedule);
+      mo.observe(document.body, { childList: true, subtree: true });
+      // 1s 巡检：路由变化 / Vue 重抹 都能自愈；非详情页自动卸载
+      setInterval(function () {
+        if (location.pathname !== _last) { _last = location.pathname; schedule(); return; }
+        if (pathId() && !document.getElementById(HOST_ID)) schedule();
+        if (!pathId() && document.getElementById(HOST_ID)) unmount();
+      }, 1000);
+    } catch (e) {}
+  }
+
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot);
+  else boot();
+  window.addEventListener('popstate', schedule);
+  var _ps = history.pushState;
+  if (_ps) {
+    history.pushState = function () { var r = _ps.apply(this, arguments); setTimeout(schedule, 60); return r; };
   }
 })();

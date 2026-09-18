@@ -17,6 +17,7 @@ from routers import settings, report_schedule, ai_settings, advanced_routes, bat
 from routers.cmdb import router as cmdb_router
 from routers.resource_cmdb import router as resource_cmdb_router
 from routers.dbs import router as dbs_router, db_collector
+from routers.files import router as files_router
 from websocket.manager import ws_manager
 from services.collector import metrics_service, COLLECTOR_STATS
 from services.alert_service import alert_service, notify_alerts
@@ -746,6 +747,8 @@ app.include_router(register_node.router)
 app.include_router(cmdb_router)
 app.include_router(resource_cmdb_router)
 app.include_router(dbs_router)
+# 运维文件库（资源管理第 7 项）：镜像/服务包 上传下载审计
+app.include_router(files_router)
 
 
 @app.get("/api/install-agent.sh")

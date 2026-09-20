@@ -539,8 +539,12 @@ window.__phyDestroy = function(){
   try { window.removeEventListener('storage', _storeHandler); } catch(_){}
   try { var r = document.getElementById('res-inline-root'); if (r) r.innerHTML = ''; } catch(_){}
   try { delete window.__RES_INLINE__; } catch(_){}
-  try { delete window.__phyDestroy; } catch(_){}
+  /* ⚠ 2026-09-20：**不要** delete window.__phyDestroy。
+     旧代码在此 self-delete，导致本页第二次进入时 destroy() 找不到钩子 → 清理失效。
+     保持幂等（多次调用无副作用）即可，由外层 registry 统一管理生命周期。 */
 };
+/* 登记到外层引擎的清理注册表（mc-custom.js __REG_DESTROY__），确保切页必定被调用 */
+try { if (window.__REG_DESTROY__) window.__REG_DESTROY__(window.__phyDestroy); } catch (e) {}
 
 /* ===================== 常量 & 工具 ===================== */
 var API = '/api/resource-cmdb';
@@ -662,11 +666,13 @@ function isAdmin(){ return ME.role === 'admin'; }
 
 function toast(msg, kind){
   var host = $('#toasts');
+  if (!host) return; /* ⚠ 2026-09-20 切页后迟到回调：容器已消失，静默丢弃 */
   var el = document.createElement('div');
   el.className = 'toast ' + (kind||'');
   el.textContent = msg;
   host.appendChild(el);
   setTimeout(function(){
+    if (!document.contains(el)) return;
     el.style.transition = 'opacity .2s, transform .2s';
     el.style.opacity = '0'; el.style.transform = 'translateX(12px)';
     setTimeout(function(){ el.remove(); }, 220);
@@ -757,7 +763,8 @@ function renderStats(){
     { k:'离线 / 维护', v:off+' / '+mt, num:null,    ico:IC_ALERT,  bar:'var(--text-tertiary)', x:'需关注' },
     { k:'30天内到期', v:soon,      num:soon,        ico:IC_CLOCK,  bar:soon>0?'var(--warning)':'var(--border-subtle)', x:'需续期' }
   ];
-  $('#stats').innerHTML = cards.map(function(c,i){
+  var _st = $('#stats'); if (!_st) return; /* ⚠ 2026-09-20 已切走：容器消失则跳过 */
+  _st.innerHTML = cards.map(function(c,i){
     return '<div class="stat"'+(c.num!=null?' data-cnt="'+c.num+'"':'')+' style="--bar:'+c.bar+';--i:'+i+'">'
       + '<span class="stat-ico" style="color:'+c.bar+'">'+c.ico+'</span>'
       + '<div class="stat-k">'+esc(c.k)+'</div>'
@@ -852,6 +859,10 @@ function projTags(ps){
 
 function render(){
   var tb = $('#tbody'), sb = $('#stateBox'), cm = $('#cardsM');
+  /* ⚠ 2026-09-20：本页被 destroy() 后，load() 的迟到回调仍会调 render()，
+     而 tb/sb/cm 已随 root 清空 → `tb.innerHTML` 抛 null 错（实测连点 8 轮贡献 7+ 条）。
+     任一必需容器缺失即判定「已切走」，直接返回。 */
+  if(!tb || !sb || !cm) return;
 
   if(LOADING){
     tb.innerHTML = ''; cm.innerHTML = '';
@@ -1458,6 +1469,7 @@ document.addEventListener('click', function(e){
 /* ===================== 工具栏交互 ===================== */
 function syncMineBtn(){
   var b = $('#btnMine');
+  if (!b) return; /* ⚠ 2026-09-20 已切走：节点消失则跳过（迟到回调路径） */
   b.classList.toggle('btn-primary', ONLY_FOLLOW);
   b.classList.toggle('btn-secondary', !ONLY_FOLLOW);
 }
@@ -1519,7 +1531,14 @@ else {
     var wn = $('#whoName'); if(wn) wn.textContent = ME.username || '未知用户';
     var wr = $('#whoRole'); if(wr) wr.textContent = isAdmin() ? '管理员' : '普通用户';
     var av = $('#avatar');  if(av) av.textContent  = initial(ME.username);
-    if(isAdmin()){ $('#btnNew').style.display = ''; $('#btnImport').style.display = ''; $('#btnImportTpl').style.display = ''; }
+    if(isAdmin()){
+      /* ⚠ 2026-09-20：本段在 loadMe() 的 .then 里，快速切页后节点已消失 →
+         `$('#btnNew').style` 抛 null 错（连点 8 轮贡献 1 条 reading 'style'）。
+         逐个取引用并判存在，缺失即跳过。 */
+      ['#btnNew','#btnImport','#btnImportTpl'].forEach(function(sel){
+        var b = $(sel); if (b) b.style.display = '';
+      });
+    }
     syncMineBtn();
     return load();
   });

@@ -952,13 +952,19 @@ window.addEventListener('storage', function(e){
 window.__cabDestroy = function(){
   try { var r = document.getElementById('cab-root'); if(r) r.innerHTML = ''; } catch(_){}
   try { delete window.__CAB_INLINE__; } catch(_){}
-  try { delete window.__cabDestroy; } catch(_){}
+  try { delete window.__CAB_INLINE__; } catch(_){}
+  /* ⚠ 2026-09-20：**不要** delete window.__cabDestroy。
+     旧代码 self-delete → 第二次进入本页后 destroy() 找不到清理钩子。保持幂等即可。 */
 };
+try { if (window.__REG_DESTROY__) window.__REG_DESTROY__(window.__cabDestroy); } catch (e) {}
 
 applyTheme();
 if(!TOKEN){ if(!INLINE) location.href = '/login'; }
 loadMe().then(function(){ var cr = document.getElementById('cab-root'); if(cr) cr.classList.toggle('can-drag', ME.role === 'admin'); return loadAll(); }).catch(function(err){
-  $('#racks').innerHTML = '<div class="state-box"><h3>加载失败</h3><p>' + esc(err.message || '') + '</p>'
+  /* ⚠ 2026-09-20：切页后本页仍可能收到迟到的请求失败回调 → $('#racks') 已消失，
+     `$('#racks').innerHTML = ...` 抛 null 错（实测连点 8 轮贡献 4 条 `setting 'innerHTML'`）。 */
+  var racks = $('#racks'); if (!racks) return;
+  racks.innerHTML = '<div class="state-box"><h3>加载失败</h3><p>' + esc(err.message || '') + '</p>'
     + '<button class="btn" onclick="location.reload()">重试</button></div>';
 });
 })();

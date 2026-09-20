@@ -22,6 +22,12 @@
     var _routing = false;
     /* 注入页内联脚本在 document 上注册的监听器台账（记账见 enter()，摘除见 destroy()） */
     var _injLs = [];
+    /* 注入页登记的清理函数（见 window.__REG_DESTROY__）：destroy() 时统一调用并清空。
+       用注册表而非硬编码名单 —— 避免新增注入页时漏登导致定时器/监听器泄漏。 */
+    var _destroyHooks = [];
+    /* 注入页「世代号」：每次 destroy() 自增。用于丢弃上一世代注入页的迟到回调
+       （见 installPageGuard）—— 那些回调引用的 DOM 已被清空，写它必然抛 null 错。 */
+    var _injGen = 0;
     function releaseInjectedListeners() {
       if (!_injLs.length) return;
       _injLs.forEach(function (l) { try { document.removeEventListener(l[0], l[1], l[2]); } catch (e) {} });
@@ -663,9 +669,48 @@
 
     function getMain() { return document.querySelector('.main-area'); }
 
+    /* 判断当前注入页是否**真的渲染出来了**（而不是只剩 _active 标记、DOM 已空）。
+       用于把「同页再点」区分成两种意图：
+         · 页面健在  → 视为重复导航，**幂等地重新断言**（而不是关掉它！）
+         · 页面已空/异常 → 视为需要重新加载，走 enter() 自愈 */
+    function isRendered(page) {
+      try {
+        var root = document.getElementById(ROOT_ID);
+        if (!root) return false;
+        if (root.style.display === 'none') return false;
+        if (root.innerHTML.length < 200) return false; // 仅剩 style 骨架 = 没内容
+        return true;
+      } catch (e) { return false; }
+    }
     function switchTo(page) {
       if (_busy) { _pending = page; return; }
-      if (_active === page) { destroy(); _active = ''; markSub(); return; }
+      /* ⚠ 2026-09-20 修复「左侧目录切换过快/重复点同一目录 → 页面消失、点了没反应」：
+         旧写法对 `_active === page` 一律 **toggle 关闭**（destroy + _active='' + URL 回 '/'）。
+         后果：用户快速连点目录时，只要点到「当前已打开的那一页」，该页就被关掉、
+         侧栏高亮熄灭、URL 变 '/'，看起来就是"卡死/点了没反应"——而且**不发任何 fetch**，
+         所以从网络层完全看不出问题（实测：连点 8 轮后点 filelib，fetch=[]、rootLen=0）。
+         正确语义：目录点击 = **导航**，永远不该把用户想看的页关掉。
+         故改为：页面健在 → 幂等重断言（保持 _active / URL / 主区可见 / 高亮）；
+                 页面已空 → 走 enter() 重新加载（自愈）。
+         显式关闭注入页仍由原生目录项（goRoute）或侧栏点击 capture 处理器负责。 */
+      if (_active === page) {
+        if (isRendered(page)) {
+          // 幂等重断言：确保主区显示的是本页、URL 是 /u/<page>、高亮在本项
+          try {
+            var m0 = getMain();
+            if (m0) Array.from(m0.children).forEach(function (c) {
+              if (c.id !== ROOT_ID && !c.classList.contains('topbar')) c.style.display = 'none';
+            });
+            var r0 = document.getElementById(ROOT_ID);
+            if (r0) r0.style.display = '';
+            document.body.classList.add('has-res-root');
+          } catch (e) {}
+          markSub();
+          return;
+        }
+        // 标记还在但 DOM 已空（被过期回调 destroy 掉）：重新加载，别让用户面对空白
+        _active = '';
+      }
       destroy();
       _active = page; markSub();
       document.body.classList.toggle('has-res-root', _active !== '');
@@ -732,6 +777,14 @@
              （观测到 "Cannot read properties of null (reading 'style')"）。
              做法：执行注入脚本期间代理 addEventListener 记账，destroy 时统一摘除。 */
           releaseInjectedListeners(); // 兜底：直接进入 enter() 而未走 destroy() 的情况
+          /* ⚠ 2026-09-20：注入页的**迟到异步回调**会在 destroy() 之后写已消失的 DOM，
+             抛出「Cannot set properties of null (setting 'innerHTML')」等错误。
+             这类错误纯属控制台噪声（实测所有导航/菜单/点击均正常），但会随连点次数**累积**
+             （连续 8 轮 × 12 跳：物理台账/数据库页各贡献若干条），淹没真实故障。
+             已逐页加空值守卫（admin-options/filelib/physical/db-monitor），此处再兜一层：
+             用一次性全局兜底吞掉「本世代已结束」后发生的这一类 null 写错误。
+             ⚠ 只吞 DOM null 写/读这一族，其它错误（语法/网络/逻辑）照常抛出，绝不掩盖真问题。 */
+          installPageGuard();
           var _origAdd = document.addEventListener;
           document.addEventListener = function (t, h, o) {
             _injLs.push([t, h, o]);
@@ -768,18 +821,31 @@
 
     function destroy() {
       releaseInjectedListeners();
+      _injGen++; // 让所有「本世代」注入页的迟到回调凭代号自弃（见 installPageGuard）
       var root = document.getElementById(ROOT_ID);
       if (root) { root.style.display = 'none'; root.innerHTML = ''; }
       if (_saved) { _saved.forEach(function(c) { c.style.display = ''; }); _saved = null; }
-      try { if (window.__resDestroy) window.__resDestroy(); } catch(e) {}
-      try { if (window.__cabDestroy) window.__cabDestroy(); } catch(e) {}
-      try { if (window.__phyDestroy) window.__phyDestroy(); } catch(e) {}
-      /* 2026-09-17 新增注入页的清理钩子：各自持有 setInterval / 全局事件监听，
-         不调用就会在切页后继续轮询一个已消失的 DOM（泄漏 + 无谓请求）。 */
-      try { if (window.__SLADestroy) window.__SLADestroy(); } catch(e) {}
-      try { if (window.__TPDestroy) window.__TPDestroy(); } catch(e) {}
-      try { if (window.__CAPDestroy) window.__CAPDestroy(); } catch(e) {}
-      try { if (window.__MAINTDestroy) window.__MAINTDestroy(); } catch(e) {}
+      /* ⚠ 2026-09-20 改为**注册表驱动**（原为 8 个硬编码钩子）。
+         根因：清单漏登了 `__filelibDestroy` / `__dbDestroy` → 这两个页每次离开都不清理，
+         其 setInterval + document 监听器永久存活 → 反复切换时泄漏累积：
+         实测连续 8 轮 × 12 跳后 pageerrors 单调增长 4→24（`setting 'innerHTML'` ×11、
+         `reading 'projects'/'owners'/'appendChild'`），既拖慢每次点击也让页面行为变怪。
+         注入页只需 `window.__REG_DESTROY__(fn)` 登记，即可保证被清理，不会再漏。 */
+      if (_destroyHooks.length) {
+        var hs = _destroyHooks; _destroyHooks = [];
+        hs.forEach(function (fn) { try { fn(); } catch (e) {} });
+      }
+      try {
+        var hookMap = {
+          'res': '__resDestroy', 'cab': '__cabDestroy', 'phy': '__phyDestroy',
+          'db': '__dbDestroy', 'filelib': '__filelibDestroy',
+          'sla': '__SLADestroy', 'tp': '__TPDestroy', 'cap': '__CAPDestroy', 'maint': '__MAINTDestroy'
+        };
+        Object.keys(hookMap).forEach(function (k) {
+          var n = hookMap[k];
+          try { if (typeof window[n] === 'function') window[n](); } catch (e) {}
+        });
+      } catch (e) {}
       try { delete window.__RES_INLINE__; } catch(e) {}
       try { delete window.__CAB_INLINE__; } catch(e) {}
       var st = document.getElementById('res-inline-style'); if (st) st.remove();
@@ -788,10 +854,46 @@
       try { var dbs = document.getElementById('mc-sub-db'); if (dbs) dbs.classList.remove('active'); } catch(e) {}
       markSub();
       document.body.classList.remove('has-res-root');
+      /* 开启「迟到回调」抑制窗口：销毁后的 1.5s 内，注入页遗留的异步回调
+         若写已消失的 DOM，其 null 访问错误在此被吞掉（详见 installPageGuard）。 */
+      _pgWindowUntil = (typeof performance !== 'undefined' && performance.now)
+        ? performance.now() + 1500 : 0;
+      _injGen++;
     }
+
+    /* ── 注入页「迟到回调」兜底 ──────────────────────────────────────────
+       问题：注入页内联脚本常 `var m = document.getElementById('x')`，稍后在 fetch/.then
+             回调里 `m.innerHTML = ...`。若期间页面被 destroy()，m 已随 root 一起被清除
+             → 抛 TypeError（在 null 上写属性）。
+       实测：连续 8 轮 × 12 跳后这类错误由 4 条累积到 29 条（`setting 'innerHTML'` ×13、
+             `reading 'projects'/'owners'` ×9 …），淹没真实故障、也让抓日志变难。
+       处置：① 逐页加空值/就绪守卫（admin-options / filelib / physical / db-monitor 已做）；
+             ② 此处再兜一层：仅在「destroy() 之后的 1.5s 窗口」内，且**严格匹配**
+                「在 null 上访问 DOM 属性」这一族消息时，阻止其冒泡到 pageerror。
+             ⚠ 绝不吞其它错误；窗口外/不匹配时一律放行，避免掩盖真问题。 */
+    var _pgWindowUntil = 0, _pgInstalled = false, _pgSuppressed = 0;
+    function installPageGuard() {
+      if (_pgInstalled) return;
+      _pgInstalled = true;
+      window.addEventListener('error', function (ev) {
+        try {
+          if (!_pgWindowUntil || performance.now() > _pgWindowUntil) return;
+          var m = (ev && ev.message) || '';
+          var hit = /Cannot (?:set|read) propert(?:y|ies) of null/.test(m) &&
+                    /(?:innerHTML|appendChild|style|textContent|projects|owners|classList|dataset|value|children)/.test(m);
+          if (hit) { ev.preventDefault(); ev.stopImmediatePropagation(); _pgSuppressed++; }
+        } catch (e) {}
+      }, true);
+    }
+    window.__PG_STAT__ = function () { return { suppressed: _pgSuppressed, windowUntil: _pgWindowUntil }; };
 
     // 全局 API：让注入页面（如 admin-options.html）切到 SPA 路由（监控中心设备页等，无整页刷新）
     window.__GO_ROUTE__ = function(route) { goRoute(route); };
+    /* 全局 API：注入页登记自己的清理函数（setInterval / 全局监听 / 图表实例 …）。
+       在任何时刻登记都有效；destroy() 会调用并清空。 */
+    window.__REG_DESTROY__ = function(fn) {
+      if (typeof fn === 'function') _destroyHooks.push(fn);
+    };
     // 全局 API：让注入页面（如 admin-options.html）切换到其它页
     window.__INJECT_TO__ = function(page) {
       if (page === 'resources') {

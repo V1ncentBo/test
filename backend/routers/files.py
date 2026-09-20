@@ -576,27 +576,50 @@ def create_ticket(
         "username": u.get("username", ""),
         "ip": _client_ip(request),
         "exp": time.time() + TICKET_TTL,
+        # 记录申请时票据绑定的文件名，下载时严格比对（防篡改 / 防路径穿越）
+        "name": r.name or "",
     }
+    # URL 形态：/{fid}/d/{票据}/{文件名}
+    #   ⚠ 文件名**必须在最后一段**：wget / curl -O 都按「URL 末段」命名，
+    #     若把票据放最后，落盘就是一串 ticket（实测踩到）。
+    #   - 末段 = 真实文件名 → wget 默认落盘即正确文件名（不看 Content-Disposition）
+    #   - 票据在中间段 → 不影响命名，且不会像 ?t= 那样被拖进文件名
+    # 兼容保留旧的 /{fid}/download?t=… 与 /{fid}/download/{name}?t=… 两种形态。
+    from urllib.parse import quote as _q
+    tail = _q(r.name or "download", safe="")
     return {
         "code": 0,
         "data": {
             "ticket": tk,
-            "url": "/api/files/%d/download?t=%s" % (fid, tk),
+            "url": "/api/files/%d/d/%s/%s" % (fid, tk, tail),
+            "filename": r.name or "",
             "expires_in": TICKET_TTL,
         },
     }
 
 
+@router.get("/{fid}/d/{t}/{fname}", summary="流式下载（票据+文件名都在路径里，wget 友好）")
 @router.get("/{fid}/download", summary="流式下载（凭一次性票据）")
+@router.get("/{fid}/download/{fname}", summary="流式下载（带文件名，可读性更好）", include_in_schema=False)
 def download_file(
     fid: int,
     request: Request,
-    t: str = Query(..., description="download-ticket 返回的一次性票据"),
+    t: str = "",
+    fname: str = "",
 ):
     """校验票据 → 流式吐文件 → 写审计 + download_count++。
 
     注意：本接口不挂 require_any_perm（票据本身即凭证），
     但票据校验失败一律 403，且票据绑定了 file_id，不能跨文件复用。
+
+    三种 URL 形态（同一实现）：
+      1. /{fid}/d/{票据}/{文件名}   ← 推荐，wget 默认落盘就是纯文件名
+      2. /{fid}/download/{文件名}?t={票据}
+      3. /{fid}/download?t={票据}    ← 最早期形态，保留兼容
+
+    `fname` 是「给人看 / 给下载器用」的装饰，不参与磁盘寻址
+    （磁盘路径始终由 DB 的 stored_name 决定），但与票据里记录的文件名
+    **严格比对**，不一致直接 403（防拿合法票据改末段做钓鱼/混淆）。
     """
     _gc_tickets()
 
@@ -608,6 +631,12 @@ def download_file(
     if info["exp"] < time.time():
         _TICKETS.pop(t, None)
         raise HTTPException(status_code=403, detail="票据已过期")
+
+    # 名字比对（只在客户端传了才校验；兼容最早期不带名字的链接）
+    if fname:
+        from urllib.parse import unquote as _uq
+        if _uq(fname) != info.get("name", ""):
+            raise HTTPException(status_code=403, detail="URL 中的文件名与票据不匹配")
 
     # 用后即焚（一次性）
     _TICKETS.pop(t, None)

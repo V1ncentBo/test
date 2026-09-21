@@ -5,12 +5,14 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from sqlalchemy import text
 from datetime import datetime, timedelta
+from typing import Optional
 import logging
+from pydantic import BaseModel
 
 from models.database import get_db, MachineInfo
 
 logger = logging.getLogger("advanced")
-from routers.auth import get_current_user, require_any_perm
+from routers.auth import get_current_user, require_any_perm, require_admin
 router = APIRouter(prefix="/api/advanced", tags=["高级功能"], dependencies=[Depends(get_current_user)])
 
 BJ_TZ = __import__('zoneinfo', fromlist=['ZoneInfo']).ZoneInfo("Asia/Shanghai")
@@ -144,6 +146,7 @@ def get_topology(db: Session = Depends(get_db)):
             "id": m.id,
             "name": m.name,
             "ip": m.ip,
+            "parent_id": m.parent_id,
             "device_type": m.device_type,
             "online_status": m.online_status,
             "group_name": m.group_name,
@@ -171,6 +174,121 @@ def get_topology(db: Session = Depends(get_db)):
             roots.append(nodes[m.id])
 
     return {"code": 0, "data": {"roots": roots, "total": len(machines)}}
+
+
+# ═══════════════════════════════════════════════════════════
+#  2b. 拓扑连线（拖拽调整父子关系）
+# ═══════════════════════════════════════════════════════════
+#
+#  本视图是「宿主机 → 虚拟机」两级树，前端布局只渲染两级；
+#  若放任出现三级，孙节点会「被统计到但画不出来」（_all 里存在、画布上没有），
+#  所以这里把「两级」作为硬约束在服务端强制执行。
+#
+#  为此还需要防环：A.parent = B 且 B 是 A 的后代时，A 会从根集合里消失、
+#  整棵子树在拓扑里「凭空不见」（前端只从 roots 渲染）。PUT /api/machines 也走同一校验。
+
+def _would_cycle(child_id: int, parent_id: int, db: Session) -> bool:
+    """把 child 挂到 parent 下是否会形成环（含自环）。
+
+    做法：从 parent 沿 parent_id 向上爬，若途中遇到 child → 成环。
+    爬升时带 visited 集合兜底：即使库里已有历史脏环也不会死循环。
+    """
+    if parent_id == child_id:
+        return True
+    seen = set()
+    cur = parent_id
+    while cur is not None and cur not in seen:
+        if cur == child_id:
+            return True
+        seen.add(cur)
+        row = db.query(MachineInfo.parent_id).filter(MachineInfo.id == cur).first()
+        cur = row[0] if row else None
+    return False
+
+
+class TopologyLink(BaseModel):
+    """拖拽连线请求体。
+
+    parent_id 为 None 表示「解除父子关系」，即把该设备提升为独立根节点。
+    """
+    child_id: int
+    parent_id: Optional[int] = None
+
+
+@router.post("/topology/link", summary="调整拓扑父子关系（拖拽连线）")
+def link_topology(
+    body: TopologyLink,
+    db: Session = Depends(get_db),
+    _admin=Depends(require_admin),
+):
+    """把 child_id 挂到 parent_id 下；parent_id=None 表示解除父级。
+
+    校验（全部在服务端强制执行，前端只做预判提示）：
+      1. child 必须存在
+      2. parent_id 非空时：parent 必须存在
+      3. 不能挂到自身（自环）
+      4. 不能挂到自己的后代（深环）
+      5. child 不能已有子节点 —— 否则会出现三级（孙节点渲染不出来）
+      6. parent 必须当前是根节点（parent_id 为空）—— 同样为了锁死两级
+
+    返回 changed=False 表示「本来就是这种关系」，前端提示但不算失败。
+    """
+    child = db.query(MachineInfo).filter(MachineInfo.id == body.child_id).first()
+    if not child:
+        raise HTTPException(status_code=404, detail="目标设备不存在（可能已被删除）")
+
+    parent = None
+    if body.parent_id is not None:
+        parent = db.query(MachineInfo).filter(MachineInfo.id == body.parent_id).first()
+        if not parent:
+            raise HTTPException(status_code=404, detail="父设备不存在（可能已被删除）")
+
+    # 自环
+    if body.parent_id is not None and body.parent_id == body.child_id:
+        raise HTTPException(status_code=400, detail="不能把设备设为它自己的子节点")
+
+    # 深环
+    if body.parent_id is not None and _would_cycle(body.child_id, body.parent_id, db):
+        raise HTTPException(
+            status_code=400,
+            detail="会形成循环依赖：%s 是 %s 的下级，不能再反过来挂回去"
+                   % (parent.name if parent else body.parent_id, child.name),
+        )
+
+    if body.parent_id is not None:
+        # 规则 5：child 不能有子节点
+        n_kids = db.query(MachineInfo).filter(MachineInfo.parent_id == body.child_id).count()
+        if n_kids:
+            raise HTTPException(
+                status_code=400,
+                detail="“%s”自身有 %d 个子节点，不能再挂到其它设备下（本视图为两级：宿主机 → 虚拟机）"
+                       % (child.name, n_kids),
+            )
+
+        # 规则 6：parent 必须是根节点
+        if parent.parent_id is not None:
+            raise HTTPException(
+                status_code=400,
+                detail="“%s”已经有父设备了，不能再作为宿主机（本视图为两级：宿主机 → 虚拟机）"
+                       % parent.name,
+            )
+
+    changed = child.parent_id != body.parent_id
+    if changed:
+        child.parent_id = body.parent_id
+        child.updated_at = datetime.now()
+        db.commit()
+
+    return {
+        "code": 0,
+        "data": {
+            "changed": changed,
+            "child_id": child.id,
+            "child_name": child.name,
+            "parent_id": body.parent_id,
+            "parent_name": parent.name if parent else None,
+        },
+    }
 
 
 # ═══════════════════════════════════════════════════════════

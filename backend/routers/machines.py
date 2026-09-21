@@ -73,6 +73,26 @@ def update_machine(machine_id: int, data: MachineUpdate, db: Session = Depends(g
     if not machine:
         raise HTTPException(status_code=404, detail="设备不存在")
     update_data = data.model_dump(exclude_unset=True)
+
+    # 父级变更必须防环（2026-09-21）：API 可被直接调用，
+    # 一旦 A.parent=B 且 B 是 A 的后代，A 及其子树会从拓扑树上「凭空消失」
+    # （前端只从 roots 渲染，成环的节点既不在 roots 里也爬不到）。
+    if "parent_id" in update_data:
+        new_parent = update_data["parent_id"]
+        if new_parent is not None:
+            if new_parent == machine_id:
+                raise HTTPException(status_code=400, detail="不能把设备设为它自己的父级")
+            if not db.query(MachineInfo.id).filter(MachineInfo.id == new_parent).first():
+                raise HTTPException(status_code=404, detail="父设备不存在")
+            # 从 new_parent 沿 parent_id 向上爬，遇到自己即成环（带 visited 兜底脏数据）
+            seen, cur = set(), new_parent
+            while cur is not None and cur not in seen:
+                if cur == machine_id:
+                    raise HTTPException(status_code=400, detail="会形成循环依赖，已拒绝")
+                seen.add(cur)
+                row = db.query(MachineInfo.parent_id).filter(MachineInfo.id == cur).first()
+                cur = row[0] if row else None
+
     if update_data.get("password"):
         update_data["password"] = encrypt_password(update_data["password"])
     if update_data.get("pve_ssh_pass"):

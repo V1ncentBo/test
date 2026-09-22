@@ -213,12 +213,13 @@
       {k:'home', label:'监控总览', route:'/', perm:'dashboard'},
       {k:'dev', label:'设备管理', route:'/machines', perm:'machines'},
       {k:'db', label:'数据库', page:'db-monitor', perm:'dbs'},
-      {k:'alerts', label:'告警日志', route:'/alerts', perm:'alerts'},
       /* 2026-09-17 新增分析层页面（后端 /api/advanced/* 早已就绪、此前无入口） */
       {k:'sla', label:'SLA 看板', page:'sla-monitor', perm:'dashboard'},
       {k:'topo', label:'服务拓扑', page:'topology', perm:'machines'},
       {k:'cap', label:'容量预测', page:'capacity', perm:'machines'},
-      {k:'maint', label:'维护窗口', page:'maintenance', perm:'machines'}
+      {k:'maint', label:'维护窗口', page:'maintenance', perm:'machines'},
+      /* 2026-09-22 需求：把「告警日志」移动到「维护窗口」下面（调整目录栏顺序） */
+      {k:'alerts', label:'告警日志', route:'/alerts', perm:'alerts'}
     ];
     function applyRcOpen() {
       document.querySelectorAll('.sidebar-nav .rc-sub').forEach(function(a) {

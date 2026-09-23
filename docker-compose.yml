@@ -93,6 +93,12 @@ services:
       ADMIN_PASS: ${ADMIN_PASS:-admin123}
       SECRET_KEY: ${SECRET_KEY:?请在 .env 中设置}
       JWT_SECRET: ${JWT_SECRET:?请在 .env 中设置}
+    # ⛔ COMMAND-FIX-20260923：显式固定启动命令，消除「三处不一致」。
+    # Dockerfile CMD 写的是 --workers 2（明令禁止双 worker），运行中容器是 --reload（开发标志），
+    # 而 backend 段原本【没有 command:】⇒ 任何 `up -d --force-recreate backend` 都会
+    # 静默切到 2 worker ⇒ 两份 db_collector() 各自 30s 全自动重采，数据互相覆盖、状态互相打架。
+    # 另：去掉 --reload 后，改后端代码需 `docker restart monitor-backend` 才生效（不再自动重载）。
+    command: ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
     volumes:
       - ./backend:/app
       # FILELIB-20260918：运维文件库。文件落独立 200G 盘 /opt/monitor-platform/filelib

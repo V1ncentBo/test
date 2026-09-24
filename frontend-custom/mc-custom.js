@@ -2024,3 +2024,247 @@
     history.pushState = function () { var r = _ps.apply(this, arguments); setTimeout(schedule, 60); return r; };
   }
 })();
+
+/* ══ MC-DISK-PRED 监控总览「磁盘预测」卡片 ══ */
+/* ===MC-DISK-PRED 2026-09-24 监控总览磁盘预测卡片补渲染===
+ * 现象：/ 监控总览 →「磁盘预测」卡片恒显示「暂无磁盘预测数据」，而徽章却写着「正常」。
+ * 根因（实测确认）：原生 Dashboard-8x13GnIL.js 的 es() 只保留
+ *     x = disk.predictions.filter(p => p.status === "critical" || p.status === "warning")
+ *   ⇒ 过滤后 0 条就渲染 .state-empty「暂无磁盘预测数据」。
+ *   但后端 GET /api/advanced/dashboard-summary?days=7 实测返回 26 条预测，
+ *   status 分布 healthy:21 / insufficient:4 / notice:1，critical 与 warning 均为 0。
+ *   唯一需要关注的 zhumy-test-1.101（日均增长 1.31%、预计 58 天写满）落在后端
+ *   明确定义的 notice 档（≤90 天），被前端静默丢弃
+ *   ⇒「有数据但都不紧急」被误报成「无数据」。
+ * 方案：接管 .disk-panel 的明细区，渲染
+ *   ① critical / warning / notice 三档（按严重度 + 剩余天数排序，复用原生类名）；
+ *   ② 三档皆空时显示「N 台设备磁盘趋势正常 + 另有 M 台数据不足 + 使用率 Top3」，
+ *      不再谎报暂无数据，也不把「数据不足」算进「正常」；
+ *   ③ 徽章按最高等级改写（bad「N 紧急」/ warn「N 关注」/ ok「正常」，
+ *      warn 档原生 CSS .sla-badge.warn 已存在，无需新增）。
+ * 安全：自建节点独立承载明细，原生节点只隐藏不删除（避免 Vue patch 锚点引用失效）；
+ *       data-mc-sig 同值不写，防 MutationObserver 自循环；异常一律静默降级。
+ */
+(function () {
+  'use strict';
+
+  var API = '/api/advanced/disk-predictions';
+  var PANEL_SEL = '.main-area .dashboard .disk-panel';
+  var CACHE_MS = 60000;
+
+  var ST = { data: null, ts: 0, inflight: false };
+
+  function esc(s) {
+    return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
+      return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c];
+    });
+  }
+  function authHeaders() {
+    var t = '';
+    try { t = localStorage.getItem('token') || ''; } catch (e) {}
+    return t ? { Authorization: 'Bearer ' + t } : {};
+  }
+  function fmt(v, d) {
+    var n = Number(v);
+    return isFinite(n) ? n.toFixed(d == null ? 1 : d) : '—';
+  }
+  function rank(s) { return s === 'critical' ? 0 : s === 'warning' ? 1 : s === 'notice' ? 2 : 3; }
+  function dOf(p) { return p.days_until_full == null ? 1e9 : Number(p.days_until_full); }
+  function pct(p) { return Number(p.current_disk_pct) || 0; }
+
+  /* ── 数据整形：一次算出「需关注列表 / 使用率 Top3 / 徽章文案」 ── */
+  function shape(data) {
+    var preds = (data && data.predictions) || [];
+    var att = preds.filter(function (p) { return rank(p.status) < 3; });
+    att.sort(function (a, b) {
+      var ra = rank(a.status), rb = rank(b.status);
+      if (ra !== rb) return ra - rb;
+      var da = dOf(a), db = dOf(b);
+      if (da !== db) return da - db;
+      return pct(b) - pct(a);
+    });
+    var top = preds.filter(function (p) { return p.status !== 'insufficient'; })
+      .sort(function (a, b) { return pct(b) - pct(a); })
+      .slice(0, 3);
+    var s = (data && data.summary) || {};
+    var cnt = function (k) { return att.filter(function (p) { return p.status === k; }).length; };
+    var n = {
+      critical: s.critical == null ? cnt('critical') : s.critical,
+      warning: s.warnings == null ? cnt('warning') : s.warnings,
+      notice: s.notices == null ? cnt('notice') : s.notices
+    };
+    var badge = n.critical > 0
+      ? { cls: 'sla-badge bad', txt: n.critical + ' 紧急' }
+      : (n.warning + n.notice) > 0
+        ? { cls: 'sla-badge warn', txt: (n.warning + n.notice) + ' 关注' }
+        : { cls: 'sla-badge ok', txt: '正常' };
+    /* ⛔ insufficient（数据不足 / 口径刚变更）必须单独计数：
+     *   它既不是「需关注」也不是「趋势正常」，兜底文案若不提它，
+     *   就会出现「10 台没数据却写全部 27 台正常」的谎报。
+     *   与后端 all_disk_predictions() 的 summary.insufficient 同口径，缺失时本地兜底计算。 */
+    var insuf = s.insufficient == null
+      ? preds.filter(function (p) { return p.status === 'insufficient'; }).length
+      : s.insufficient;
+    return {
+      att: att, top: top, badge: badge, insufficient: insuf,
+      total: s.total == null ? preds.length : s.total
+    };
+  }
+
+  /* ── 单行渲染：复刻原生 .disk-alert 结构，仅多一个 notice 修饰类 ── */
+  function rowHTML(p) {
+    var cls = 'disk-alert';
+    if (p.status === 'critical') cls += ' critical';
+    else if (p.status === 'warning') cls += ' warning';
+    else if (p.status === 'notice') cls += ' notice';
+    var h = '<div class="' + cls + '" title="' + esc(p.prediction) + '">'
+      + '<span class="disk-name">' + esc(p.machine_name) + '</span>'
+      + '<span class="disk-pct">' + fmt(p.current_disk_pct, 1) + '%</span>';
+    if (p.days_until_full != null) h += '<span class="disk-days">' + fmt(p.days_until_full, 0) + '天</span>';
+    h += '<span class="disk-msg">' + esc(p.prediction) + '</span></div>';
+    return h;
+  }
+
+  function trendTxt(p) {
+    if (p.trend === 'down') return '趋势下降';
+    if (p.trend === 'stable' || !p.daily_growth_pct) return '趋势平稳';
+    return '日均 +' + fmt(p.daily_growth_pct, 3) + '%';
+  }
+
+  /* ── 全正常时的兜底内容：明确「有数据、都健康」，并给出使用率 Top3 ── */
+  function okHTML(s) {
+    /* ⛔ 不能无条件写「全部 N 台正常」：数据不足的机器只是「没结论」，
+     *   统计算进正常就是谎报（2026-09-24 实测 27 台中 10 台 insufficient）。
+     *   有不足时改报「X 台趋势正常 + 另有 Y 台数据不足，暂不外推」。 */
+    var insuf = s.insufficient || 0;
+    var okN = Math.max(0, (s.total || 0) - insuf);
+    var h = '<div class="mc-disk-ok">'
+      + '<span class="mc-disk-ok-t">'
+      + (insuf ? okN + ' 台设备磁盘趋势正常' : '全部 ' + s.total + ' 台设备磁盘趋势正常')
+      + '</span>'
+      + '<span class="mc-disk-ok-d">'
+      + (insuf ? '另有 ' + insuf + ' 台数据不足，暂不外推' : '近 30 天无显著增长，暂无写满风险')
+      + '</span></div>';
+    if (s.top.length) {
+      h += '<div class="mc-disk-top"><span class="mc-disk-top-h">使用率 Top' + s.top.length + '</span>'
+        + s.top.map(function (p) {
+            return '<div class="mc-disk-top-i">'
+              + '<span class="disk-name">' + esc(p.machine_name) + '</span>'
+              + '<span class="disk-pct">' + fmt(p.current_disk_pct, 1) + '%</span>'
+              + '<span class="mc-disk-top-t">' + trendTxt(p) + '</span></div>';
+          }).join('')
+        + '</div>';
+    }
+    return h;
+  }
+
+  function hasContent(s) { return !!(s && (s.att.length || s.total)); }
+
+  function isHost(el) { return el && el.className && String(el.className).indexOf('mc-disk-host') >= 0; }
+
+  /* 原生节点只隐藏不删除：Vue patch 的锚点引用仍在，重渲染不会炸 */
+  function setHidden(panel, on) {
+    Array.prototype.forEach.call(panel.children, function (el) {
+      if (el.classList.contains('panel-title') || isHost(el)) return;
+      var want = on ? 'none' : '';
+      if (el.style.display !== want) el.style.display = want;
+    });
+  }
+
+  function apply() {
+    var s = ST.data;
+    if (!s) return;
+    var panel = document.querySelector(PANEL_SEL);
+    if (!panel) return;
+
+    /* ① 徽章：按最高等级改写 */
+    var badge = panel.querySelector('.panel-title .sla-badge');
+    if (badge) {
+      if (badge.className !== s.badge.cls) badge.className = s.badge.cls;
+      if ((badge.textContent || '') !== s.badge.txt) badge.textContent = s.badge.txt;
+    }
+
+    /* ② 明细：统一自建节点承载，原生行/空态一律让位 */
+    var html = hasContent(s) ? (s.att.length ? s.att.map(rowHTML).join('') : okHTML(s)) : '';
+    if (!html) {                                   // 后端确实无预测数据 ⇒ 还原原生空态
+      var old = panel.querySelector('.mc-disk-host');
+      if (old && old.parentNode) old.parentNode.removeChild(old);
+      setHidden(panel, false);
+      return;
+    }
+    var host = panel.querySelector('.mc-disk-host');
+    if (!host) {
+      host = document.createElement('div');
+      host.className = 'mc-disk-host';
+      var title = panel.querySelector('.panel-title');
+      if (title && title.nextSibling) panel.insertBefore(host, title.nextSibling);
+      else panel.appendChild(host);
+    }
+    var sig = s.badge.cls + '|' + s.badge.txt + '|' + html;
+    if (host.getAttribute('data-mc-sig') !== sig) {
+      host.setAttribute('data-mc-sig', sig);
+      host.innerHTML = html;
+    }
+    setHidden(panel, true);
+  }
+
+  var _timer = null, _cfm = null;
+  function schedule() {
+    if (_timer) clearTimeout(_timer);
+    _timer = setTimeout(function () { _timer = null; run(); }, 220);
+    if (_cfm) clearTimeout(_cfm);
+    _cfm = setTimeout(function () { _cfm = null; run(); }, 900);
+  }
+
+  function needFetch() {
+    if (ST.inflight) return;
+    if (ST.data && Date.now() - ST.ts < CACHE_MS) return;
+    ST.inflight = true;
+    fetch(API, { headers: authHeaders(), credentials: 'same-origin' })
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (j) {
+        if (j && j.code === 0 && j.data && j.data.predictions) {
+          ST.data = shape(j.data);
+          ST.ts = Date.now();
+        }
+      })
+      .catch(function () {})
+      .then(function () { ST.inflight = false; schedule(); });
+  }
+
+  function run() {
+    var panel = document.querySelector(PANEL_SEL);
+    if (!panel) return;
+    if (!ST.data) { needFetch(); return; }
+    apply();
+    if (Date.now() - ST.ts >= CACHE_MS) needFetch();
+  }
+
+  function needsWork() {
+    var panel = document.querySelector(PANEL_SEL);
+    if (!panel) return false;
+    if (!ST.data) return true;
+    return hasContent(ST.data) && !panel.querySelector('.mc-disk-host');
+  }
+
+  var _last = location.pathname;
+  function boot() {
+    try {
+      run();
+      var mo = new MutationObserver(schedule);
+      mo.observe(document.body, { childList: true, subtree: true });
+      setInterval(function () {
+        if (location.pathname !== _last) { _last = location.pathname; schedule(); return; }
+        if (needsWork()) schedule();
+      }, 1500);
+    } catch (e) {}
+  }
+
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot);
+  else boot();
+  window.addEventListener('popstate', schedule);
+  var _ps2 = history.pushState;
+  if (_ps2) {
+    history.pushState = function () { var r = _ps2.apply(this, arguments); setTimeout(schedule, 60); return r; };
+  }
+})();

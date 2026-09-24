@@ -74,7 +74,12 @@ class MetricsService:
                        "disk_read_iops", "disk_write_iops"]
             fields = []
             for k in float_keys:
-                v = data.get(k) or data.get(_alias.get(k))
+                # 注意：不能用 `data.get(k) or data.get(alias)` —— 0.0 是 falsy，
+                # 会把「空载 = 0 MB/s」误判成「该字段不存在」整条丢弃，导致磁盘/网络
+                # 速率图在空闲时段完全没有数据点（表现为「监测不到」）。
+                v = data.get(k)
+                if v is None:
+                    v = data.get(_alias.get(k))
                 if v is not None:
                     db_key = _alias.get(k, k)
                     fields.append(f"{db_key}={float(v)}")

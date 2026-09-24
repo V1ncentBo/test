@@ -394,56 +394,114 @@ def disk_prediction(machine_id: int, db: Session = Depends(get_db)):
         from config import INFLUXDB_ORG, INFLUXDB_BUCKET
 
         now = datetime.now()
-        start = now - timedelta(days=30)
 
         query_api = metrics_service.query_api
 
         # 获取最近30天的磁盘使用率
-        query = f'''
-        from(bucket: "{INFLUXDB_BUCKET}")
-          |> range(start: {start.strftime("%Y-%m-%dT%H:%M:%SZ")})
-          |> filter(fn: (r) => r["machine_id"] == "{machine_id}")
-          |> filter(fn: (r) => r["_field"] == "disk_percent")
-          |> aggregateWindow(every: 1h, fn: mean, createEmpty: false)
-        '''
-        result = query_api.query(query, org=INFLUXDB_ORG)
-
-        # 提取数据点
-        points = []
-        for table in result:
-            for record in table.records:
-                t = record.get_time()
-                v = record.get_value()
-                if v is not None:
-                    points.append((t.timestamp(), v))
-
-        if len(points) < 10:
-            # 如果数据不足30天，尝试7天
-            start7 = now - timedelta(days=7)
-            query7 = f'''
+        # ⛔⛔ 必须限定 `_measurement`：同一 machine_id 下 `machine_metrics`（node_exporter /
+        #   agent 上报的真实值）与 `vm_metrics`（PVE 侧，disk_percent 恒为 0）**并存**。
+        #   `aggregateWindow` 会按 measurement 分表，不限定就会把两套序列一起塞进 points，
+        #   变成「真值 / 0」交替（实测 mid=51：machine_metrics n=690 值 48.8~49.2，
+        #   vm_metrics n=159 恒 0.0）⇒ 两序列覆盖区间与条数比随时间漂移，回归斜率被彻底污染
+        #   （实测虚增出 26.375 / 1038.767 个百分点/天的假 critical）。
+        #   口径与 query_latest 一致：machine_metrics 优先，vm_metrics 回退。
+        def _disk_points(measurement: str, days: int) -> list:
+            q = f'''
             from(bucket: "{INFLUXDB_BUCKET}")
-              |> range(start: {start7.strftime("%Y-%m-%dT%H:%M:%SZ")})
+              |> range(start: {(now - timedelta(days=days)).strftime("%Y-%m-%dT%H:%M:%SZ")})
+              |> filter(fn: (r) => r["_measurement"] == "{measurement}")
               |> filter(fn: (r) => r["machine_id"] == "{machine_id}")
               |> filter(fn: (r) => r["_field"] == "disk_percent")
               |> aggregateWindow(every: 1h, fn: mean, createEmpty: false)
             '''
-            result7 = query_api.query(query7, org=INFLUXDB_ORG)
-            for table in result7:
+            out = {}
+            for table in query_api.query(q, org=INFLUXDB_ORG):
                 for record in table.records:
-                    t = record.get_time()
                     v = record.get_value()
                     if v is not None:
-                        points.append((t.timestamp(), v))
+                        out[record.get_time().timestamp()] = v
+            return out
+
+        # 依次尝试：30 天 → 7 天 → 换 vm_metrics 重来。按时间戳去重，避免区间重叠处重复计点。
+        points = []
+        for _meas in ("machine_metrics", "vm_metrics"):
+            for _days in (30, 7):
+                got = _disk_points(_meas, _days)
+                if len(got) >= 10:
+                    points = sorted(got.items())
+                    break
+            if points:
+                break
+        # 全都不足 10 点时，用能取到的最大集合做后续「< 5 点」判定
+        if not points:
+            merged = {}
+            for _meas in ("machine_metrics", "vm_metrics"):
+                merged.update(_disk_points(_meas, 30))
+            points = sorted(merged.items())
+
+        # ⛔⛔ 阶跃 / 口径变更守卫（STEPGUARD-20260924）────────────────────────
+        #   采集口径变更（含本次 disk_percent 挂载点从 /home 纠正为 /）会在序列里
+        #   留下一次「垂直线」，而 30 天线性回归会把它摊成一条假的上升趋势：
+        #   实测 mid=52(jenkins-1.105) 09-21 01:00~09-24 08:00 恒 11.1%，
+        #   09-24 09:00 → 36.2%、09:15 → 52.4%（1 小时内 +41 个百分点），
+        #   回归却报「日均增长 1.377%，62.3 天后耗尽」——机器真实状态是「3 天不动」。
+        #   ⇒ 只保留**最后一次大幅跳变之后**的样本（跳变点自身保留作新基线），
+        #     再由下面的「样本跨度 < 24h」闸把它判成 insufficient，诚实报「暂不外推」。
+        #   ⛔ 判据必须是「**电平位移**」而不是「相邻两点差值」：小时均值上，
+        #     小容量盘一次正常写盘就能差出 5 个百分点，用逐点差值会把样本砍光、
+        #     白白丢掉预测。这里取跳变点前 6 点 / 后 3 点的**中位数**之差，
+        #     中位数抗单点尖刺，只认真实台阶（口径变更 / 一次性大写入）。
+        STEP_PCT = 5.0        # 电平位移阈值（百分点）
+        STEP_BEFORE = 6       # 位移前窗口（小时均值点）
+        STEP_AFTER = 3        # 位移后窗口
+
+        def _median(xs):
+            s = sorted(xs)
+            n = len(s)
+            return s[n // 2] if n % 2 else (s[n // 2 - 1] + s[n // 2]) / 2.0
+
+        step_from = None
+        for _i in range(1, len(points)):
+            _b = [p[1] for p in points[max(0, _i - STEP_BEFORE):_i]]
+            _a = [p[1] for p in points[_i:_i + STEP_AFTER]]
+            if _b and _a and abs(_median(_a) - _median(_b)) >= STEP_PCT:
+                step_from = _i
+        if step_from:
+            points = points[step_from:]
 
         if len(points) < 5:
+            # ⛔ 不要写死 current_disk_pct=0：只要还有样本，它就是**实测值**。
+            #   写死 0 会让「磁盘 52.4% 的机器在卡片上显示 0%」——正是用户投诉过的观感矛盾。
             return {
                 "code": 0,
                 "data": {
                     "machine_name": machine.name,
-                    "current_disk_pct": 0,
+                    "current_disk_pct": round(points[-1][1], 1) if points else 0,
                     "days_until_full": None,
-                    "prediction": "数据不足，需要更多历史数据",
+                    "prediction": ("采集口径/数据源刚变更，新基线样本不足，暂不外推"
+                                   if step_from else "数据不足，需要更多历史数据"),
                     "status": "insufficient",
+                },
+            }
+
+        # ⛔ 外推至少需要跨一个完整日周期的观察窗口。
+        #   只有几小时样本时（今天新加的机器、或采集口径刚切换），回归会把「阶跃」当增长趋势：
+        #   实测 1.195 因 disk_percent 从旧 /home 口径(0.2%)切到 / 口径(8.5%)，
+        #   在 ~30 分钟窗口上被外推成 43 个百分点/天 ⇒ 假 critical「2.2 天后耗尽」。
+        span_hours = (points[-1][0] - points[0][0]) / 3600
+        if span_hours < 24:
+            # 命中阶跃守卫时，把「口径刚变更」讲明白，否则用户会把 insufficient 读成「机器异常」
+            _why = (f"采集口径/数据源刚变更，新基线仅 {span_hours:.1f} 小时"
+                    if step_from else f"历史数据仅覆盖 {span_hours:.1f} 小时")
+            return {
+                "code": 0,
+                "data": {
+                    "machine_name": machine.name,
+                    "current_disk_pct": round(points[-1][1], 1),
+                    "days_until_full": None,
+                    "prediction": f"{_why}（不足一天），暂不外推，明日再看",
+                    "status": "insufficient",
+                    "trend": "stable",
                 },
             }
 
@@ -470,15 +528,36 @@ def disk_prediction(machine_id: int, db: Session = Depends(get_db)):
         current_pct = ys[-1]
         current_day = xs[-1]
 
-        # 预测磁盘达到 100% 的天数
-        if slope <= 0:
-            prediction = "磁盘使用率趋势稳定或下降，暂无风险"
+        # ── 退化数据清洗（DISKPRED-CLEANUP-20260924）────────────────
+        # slope 是「每天增长多少个百分点」。回归斜率在数值噪声下常拿到 1e-9 ~ 1e-4
+        # 这种量级，代入 (100-intercept)/slope 会外推出 2.39e16 / 5130745.6 这类
+        # 天文数字；同时 round(slope, 3) 会把它抹成 0.0，却仍判 trend="up" 自相矛盾。
+        # 口径：日均增长 < 0.01 个百分点 ⇒ 视为无增长；外推 > 3650 天（10 年）⇒ 无风险。
+        # 该口径与前端 capacity.html 的 `days_until_full < 3650` 判定保持一致。
+        MIN_SLOPE = 0.01
+        MAX_DAYS = 3650
+        slope_eff = slope if slope > 0 else 0.0
+
+        if slope_eff < MIN_SLOPE:
+            # 覆盖 slope <= 0（稳定/下降）与 slope 近零（噪声）两种情形
             days_left = None
             status = "healthy"
+            if slope_eff <= 0:
+                prediction = "磁盘使用率趋势稳定或下降，暂无风险"
+                trend = "down" if slope_eff < 0 else "stable"
+            else:
+                prediction = "磁盘使用趋势平缓（日均增长不足 0.01%），暂无风险"
+                trend = "stable"
         else:
-            # 100 = slope * (current_day + days_left) + intercept
-            days_left = (100 - intercept) / slope - current_day
+            # ⛔ 外推基线锚在**实测当前值**，不要用回归线截距：
+            #     卡片同时展示「当前使用率 / 日均增长 / 剩余天数」，用户会心算
+            #     (100 - pct) / growth 交叉验证。锚回归线会出现
+            #     「52.4% 且日均 +1.377%」却「还要 62.3 天」这类自相矛盾
+            #     （该机器回归线在当下的预报值只有 14.2%，与实测 52.4% 差 38 个百分点）。
+            #     锚实测值后，三条信息恒满足 days_left == (100 - current_pct) / slope_eff。
+            days_left = (100 - current_pct) / slope
             days_left = round(max(0, days_left), 1)
+            trend = "up"
             if days_left <= 7:
                 status = "critical"
                 prediction = f"磁盘预计 {days_left} 天后耗尽，请立即清理或扩容！"
@@ -488,20 +567,26 @@ def disk_prediction(machine_id: int, db: Session = Depends(get_db)):
             elif days_left <= 90:
                 status = "notice"
                 prediction = f"磁盘预计 {days_left} 天后耗尽，请关注"
-            else:
+            elif days_left <= MAX_DAYS:
                 status = "healthy"
                 prediction = f"磁盘使用趋势平缓，预计 {int(days_left)} 天后达到100%"
+            else:
+                # 外推超过 10 年，无实际意义 ⇒ 当作无风险，且不吐天文数字
+                status = "healthy"
+                days_left = None
+                prediction = "磁盘使用趋势平缓，暂无风险"
 
         return {
             "code": 0,
             "data": {
                 "machine_name": machine.name,
                 "current_disk_pct": round(current_pct, 1),
-                "daily_growth_pct": round(slope, 3) if slope > 0 else 0,
+                # slope_eff >= MIN_SLOPE 时 round(slope,3) 必 > 0，与 trend="up" 不再矛盾
+                "daily_growth_pct": round(slope_eff, 3) if slope_eff >= MIN_SLOPE else 0,
                 "days_until_full": days_left,
                 "prediction": prediction,
                 "status": status,
-                "trend": "up" if slope > 0 else "down" if slope < 0 else "stable",
+                "trend": trend,
             },
         }
 
@@ -527,6 +612,8 @@ def all_disk_predictions(db: Session = Depends(get_db)):
     results = []
     warnings = 0
     criticals = 0
+    notices = 0
+    insufficient = 0
 
     for m in machines:
         try:
@@ -539,13 +626,25 @@ def all_disk_predictions(db: Session = Depends(get_db)):
                     warnings += 1
                 elif d["status"] == "critical":
                     criticals += 1
+                elif d["status"] == "notice":
+                    notices += 1
+                elif d["status"] == "insufficient":
+                    insufficient += 1
         except Exception:
             pass
 
     out = {
         "code": 0,
         "data": {
-            "summary": {"total": len(machines), "warnings": warnings, "critical": criticals},
+            "summary": {
+                "total": len(machines),
+                "warnings": warnings,
+                "critical": criticals,
+                "notices": notices,
+                "insufficient": insufficient,
+                # attention = 需要人工关注的设备数（紧急 + 预警 + 关注）
+                "attention": criticals + warnings + notices,
+            },
             "predictions": results,
         },
     }

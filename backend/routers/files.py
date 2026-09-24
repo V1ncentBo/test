@@ -499,6 +499,30 @@ def patch_file(
     if body.category is not None:
         if body.category not in VALID_CATS:
             raise HTTPException(status_code=400, detail="非法分类")
+        if body.category != r.category:
+            # ⛔ CATMOVE-20260924：分类变更必须同步把磁盘文件搬过去。
+            # 原先只改 DB 字段、文件留在旧目录，靠 _locate() 的全分类兜底扫
+            # 掩盖了下载 404 —— 但会让「按分类目录做的统计/备份」漏文件。
+            # 顺序：先移文件、移成功才 commit；移动失败直接 500，保证 DB 与磁盘一致。
+            src_path = _locate(r.stored_name, r.category)
+            if src_path:
+                dst_dir = os.path.join(LIB_DIR, body.category)
+                dst_path = os.path.join(dst_dir, r.stored_name)
+                if os.path.abspath(src_path) != os.path.abspath(dst_path):
+                    if os.path.exists(dst_path):
+                        raise HTTPException(
+                            status_code=409,
+                            detail="目标分类下已存在同名文件，已中止分类变更",
+                        )
+                    try:
+                        os.makedirs(dst_dir, exist_ok=True)
+                        os.replace(src_path, dst_path)
+                    except Exception as e:
+                        raise HTTPException(
+                            status_code=500,
+                            detail="分类变更失败（文件移动出错）：%s" % str(e)[:150],
+                        )
+            # 文件找不到 -> 只改元数据（与 delete_file 的容错口径保持一致）
         r.category = body.category
     if body.distro is not None:
         r.distro = body.distro

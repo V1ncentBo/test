@@ -493,35 +493,3 @@
 html.light .mdc-panel .mdc-kpi {
   background: rgba(15, 23, 42, .03);
 }
-
-/* ⛔⛔ MC-DISK-PRED-20260924 监控总览「磁盘预测」卡片
- * ⛔⛔ 原生那一整套 .disk-alert / .disk-name / .disk-pct / .disk-days / .disk-msg
- * 全部是 Vue **scoped** 选择器（`[data-v-313c1150]`）。而本模块注入的节点**没有**
- * 这个属性 ⇒ 原生规则根本不命中（实测 computed `display:block`、`flex-wrap:nowrap`、
- * 规则枚举为空），表现为四段文案挤在一行、.disk-msg 的 `width:100%` 换行失效。
- * ⇒ 因此这里**必须把原生声明逐条复制**过来，绝不能假设原生 CSS 会作用到注入节点。
- * ⚠ 全部收窄在 .mc-disk-host 内：原生自己渲染的行不受任何影响，零视觉回归。
- * ⚠ notice（≤90 天）档原生不存在，这里补齐；.disk-days 的底色跟随本行等级
- *   （原生把 .disk-days 写死 var(--danger)，warning 行会显示成红色「紧急」观感）。 */
-.main-area .disk-panel .mc-disk-host{display:block;text-align:left;align-items:stretch;justify-content:flex-start;gap:0;padding:0!important;color:inherit}
-.main-area .disk-panel .mc-disk-host .disk-alert{display:flex;align-items:center;gap:var(--space-2,8px);flex-wrap:wrap;padding:8px 10px;margin-bottom:6px;border-radius:var(--radius-md,8px);font-size:var(--text-sm,13px)}
-.main-area .disk-panel .mc-disk-host>.disk-alert:last-child{margin-bottom:0}
-.main-area .disk-panel .mc-disk-host .disk-alert.critical{background:var(--danger-subtle,rgba(248,113,113,.12));border-left:3px solid var(--danger,#f87171)}
-.main-area .disk-panel .mc-disk-host .disk-alert.warning{background:var(--warning-subtle,rgba(251,191,36,.12));border-left:3px solid var(--warning,#f59e0b)}
-.main-area .disk-panel .mc-disk-host .disk-alert.notice{background:var(--warning-subtle,rgba(251,191,36,.12));border-left:3px solid var(--warning,#f59e0b)}
-.main-area .disk-panel .mc-disk-host .disk-name{font-weight:var(--weight-medium,500);flex:0 1 auto;max-width:46%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.main-area .disk-panel .mc-disk-host .disk-pct{font-family:var(--font-mono,ui-monospace,monospace);font-weight:var(--weight-semibold,600);font-variant-numeric:tabular-nums}
-.main-area .disk-panel .mc-disk-host .disk-days{padding:1px 6px;border-radius:4px;font-size:11px;font-weight:var(--weight-semibold,600);background:var(--danger,#f87171);color:#fff}
-.main-area .disk-panel .mc-disk-host .disk-alert.warning .disk-days,
-.main-area .disk-panel .mc-disk-host .disk-alert.notice .disk-days{background:var(--warning,#f59e0b);color:#fff}
-.main-area .disk-panel .mc-disk-host .disk-msg{color:var(--text-secondary,rgba(203,213,225,.9));font-size:var(--text-xs,11px);width:100%}
-
-/* 三档皆空：明确「有数据、都健康」，并附带使用率 Top3 */
-.main-area .disk-panel .mc-disk-ok{display:flex;flex-direction:column;gap:2px;padding:10px 12px;border-radius:var(--radius-md,8px);background:var(--success-subtle,rgba(52,211,153,.12));border-left:3px solid var(--success,#34d399)}
-.main-area .disk-panel .mc-disk-ok-t{font-size:var(--text-sm,13px);font-weight:var(--weight-semibold,600);color:var(--success,#34d399)}
-.main-area .disk-panel .mc-disk-ok-d{font-size:var(--text-xs,11px);color:var(--text-tertiary,rgba(148,163,184,.85))}
-.main-area .disk-panel .mc-disk-top{margin-top:10px;padding-top:9px;border-top:.5px solid var(--border-subtle,rgba(148,163,184,.18))}
-.main-area .disk-panel .mc-disk-top-h{display:block;font-size:var(--text-xs,11px);letter-spacing:.04em;color:var(--text-tertiary,rgba(148,163,184,.85));margin-bottom:2px}
-.main-area .disk-panel .mc-disk-top-i{display:flex;align-items:center;gap:var(--space-2,8px);padding:4px 0;font-size:var(--text-sm,13px)}
-.main-area .disk-panel .mc-disk-top-i .disk-pct{font-weight:var(--weight-semibold,600)}
-.main-area .disk-panel .mc-disk-top-t{margin-left:auto;font-family:var(--font-mono,ui-monospace,monospace);font-size:var(--text-xs,11px);color:var(--text-tertiary,rgba(148,163,184,.85));font-variant-numeric:tabular-nums}

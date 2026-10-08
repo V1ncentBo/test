@@ -2268,3 +2268,131 @@
     history.pushState = function () { var r = _ps2.apply(this, arguments); setTimeout(schedule, 60); return r; };
   }
 })();
+
+/* ══ MC-DEPLOY-GUIDE 部署指南页「入口自适应」提示 ══ */
+/* ===MC-DEPLOY-GUIDE 2026-09-24===
+ * 现象：原生部署指南页里的平台地址是**编译期写死的字面量**
+ *   （线上 chunk DeployGuide-9b8gTQpB.js 头部 `const v="192.168.1.66"`）
+ *   ⇒ 从公网入口 http://117.134.9.72:8166 打开，页面照显 192.168.1.66；
+ *   而 install-node-exporter.sh 内部 MP_HOST 同为写死 ⇒ 跨网段照抄命令必然失败
+ *   （脚本跑完、9100 起来了，但平台永远看不到这台机器）。
+ * 方案：**不改原生 DOM 结构**，只在 .guide-tabs 之后插入自建节点，内容全部按
+ *   「当前访问入口」location.origin 动态生成：
+ *     ① 一眼可见当前用的是内网还是公网入口；
+ *     ② 内网 / 路由可达 → /api/install-node-exporter.sh（后端按请求 Host 注入平台地址，自适应）；
+ *     ③ 跨网段 / 公网（含**网段重叠**）→ /api/install-agent.sh（推模型才走得通）。
+ * 安全：自建节点独立承载，原生节点只在其后插入、不删不改；
+ *   data-mc-sig 同值不写，防 MutationObserver 自循环；异常一律静默降级。
+ * 样式：注入节点无 data-v-* ⇒ 天然免疫原生 scoped 样式，因此**样式自带**
+ *   （全部收窄在 #mcDeployEntry 下，避免反向污染原生页）。
+ */
+(function () {
+  'use strict';
+
+  var PAGE = '/deploy-guide';
+  var ROOT_SEL = '.main-area .deploy-guide';
+  var ANCHOR_SEL = '.guide-tabs';
+  var HOST_ID = 'mcDeployEntry';
+
+  function esc(s) {
+    return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
+      return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c];
+    });
+  }
+
+  // 当前入口是否内网地址（决定「内网/公网入口」标签 + 是否提示内网回流限制）
+  // ⚠ 判据必须覆盖三类内网写法：私有 IP 段 / localhost / **无点主机名**（如 ucap-monitor）。
+  //   E2E 抓到过两个假阴性：① 私有段末尾多加 (:|/|$) 边界 → 192.168.1.66 判不出来；
+  //   ② 只认 IP 段 → ucap-monitor:8165 被误判成公网并弹「内网回流」警告。
+  function isPrivate(o) {
+    var m = /^https?:\/\/([^\/:]+)/i.exec(o || '');
+    if (!m) return false;
+    var host = m[1].toLowerCase();
+    if (host === 'localhost' || /^127\./.test(host)) return true;
+    if (/^(192\.168\.|10\.|172\.(1[6-9]|2\d|3[01])\.)/.test(host)) return true;
+    if (host.indexOf('.') < 0) return true;   // 无点主机名 ⇒ 内网
+    return false;
+  }
+
+  function buildHTML() {
+    var o = String(location.origin || '').replace(/\/+$/, '');
+    var priv = isPrivate(o);
+    var neCmd = 'curl -sL ' + o + '/api/install-node-exporter.sh -o /tmp/install_ne.sh\nbash /tmp/install_ne.sh';
+    var agCmd = 'curl -s ' + o + '/api/install-agent.sh | bash -s <设备ID>';
+    return ''
+      + '<div class="mdg-head">'
+      +   '<span class="mdg-dot"></span>'
+      +   '<span class="mdg-t">当前访问入口</span>'
+      +   '<code class="mdg-origin">' + esc(o) + '</code>'
+      +   '<span class="mdg-tag ' + (priv ? 'is-lan' : 'is-wan') + '">' + (priv ? '内网入口' : '公网入口') + '</span>'
+      + '</div>'
+      + '<div class="mdg-grid">'
+      +   '<div class="mdg-card">'
+      +     '<div class="mdg-card-h"><span class="mdg-num">1</span>内网 / 路由可达的机器</div>'
+      +     '<p class="mdg-d">平台<b>主动拉取</b> <code>目标IP:9100</code>：适用于同一网段，或路由可达且<b>不重叠</b>的网段。</p>'
+      +     '<pre class="mdg-code"><code>' + esc(neCmd) + '</code></pre>'
+      +     '<p class="mdg-note">脚本内的平台地址会按「你拉取时用的地址」自动填入（含端口），<b>无需再改代码</b>。</p>'
+      +   '</div>'
+      +   '<div class="mdg-card mdg-card-hl">'
+      +     '<div class="mdg-card-h"><span class="mdg-num">2</span>跨网段 / 公网机器（含网段重叠）</div>'
+      +     '<p class="mdg-d">平台<b>连不到</b>目标机 9100 —— 若两边都用 <code>192.168.1.0/24</code>，内核只发 ARP、不走网关，<b>映射公网也没用</b>。必须由目标机<b>主动上报</b>。</p>'
+      +     '<pre class="mdg-code"><code>' + esc(agCmd) + '</code></pre>'
+      +     '<p class="mdg-note">设备 ID 在「设备管理」添加后获取；上报走 <code>POST /api/metrics/report</code>，在线状态由上报驱动。</p>'
+      +   '</div>'
+      + '</div>'
+      + (priv ? '' :
+          '<p class="mdg-warn">⛔ 目标机若在<b>内网</b>，请改用内网地址 <code>http://192.168.1.66/...</code> 拉取脚本 —— 防火墙不支持内网回流，内网机器访问上面的公网地址会不通。</p>');
+  }
+
+  function run() {
+    if (location.pathname !== PAGE) return;
+    var root = document.querySelector(ROOT_SEL);
+    if (!root) return;
+    var host = document.getElementById(HOST_ID);
+    if (!host) {
+      host = document.createElement('div');
+      host.id = HOST_ID;
+      var anchor = root.querySelector(ANCHOR_SEL);
+      if (anchor && anchor.parentNode) anchor.parentNode.insertBefore(host, anchor.nextSibling);
+      else root.appendChild(host);
+    }
+    var html = buildHTML();
+    if (host.getAttribute('data-mc-sig') !== html) {
+      host.setAttribute('data-mc-sig', html);
+      host.innerHTML = html;
+    }
+  }
+
+  function needsWork() {
+    if (location.pathname !== PAGE) return false;
+    if (!document.querySelector(ROOT_SEL)) return false;
+    return !document.getElementById(HOST_ID);
+  }
+
+  var _t = null;
+  function schedule() {
+    if (_t) clearTimeout(_t);
+    _t = setTimeout(function () { _t = null; try { run(); } catch (e) {} }, 200);
+  }
+
+  var _last = location.pathname;
+  function boot() {
+    try {
+      run();
+      var mo = new MutationObserver(schedule);
+      mo.observe(document.body, { childList: true, subtree: true });
+      setInterval(function () {
+        if (location.pathname !== _last) { _last = location.pathname; schedule(); return; }
+        if (needsWork()) schedule();
+      }, 1500);
+    } catch (e) {}
+  }
+
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot);
+  else boot();
+  window.addEventListener('popstate', schedule);
+  var _ps = history.pushState;
+  if (_ps) {
+    history.pushState = function () { var r = _ps.apply(this, arguments); setTimeout(schedule, 60); return r; };
+  }
+})();

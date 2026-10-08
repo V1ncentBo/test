@@ -772,6 +772,30 @@ async def install_agent_script(request: Request):
     return PlainTextResponse(script, media_type="text/plain; charset=utf-8")
 
 
+@app.get("/api/install-node-exporter.sh")
+async def install_node_exporter_script(request: Request):
+    """动态生成 node_exporter 安装脚本：平台地址由请求 URL 推导，不再写死 IP。
+
+    与 /api/install-agent.sh 同构。被监控机执行：
+        curl -sL http://<平台入口>/api/install-node-exporter.sh -o /tmp/install_ne.sh && bash /tmp/install_ne.sh
+    脚本内 MP_BASE 会自动指向当前访问地址（含协议/端口），
+    内网 / 公网(如 117.134.9.72:8166) 两种入口拉取都能正确注册，无需再手改脚本。
+    """
+    import os
+    script_path = os.path.join(os.path.dirname(__file__), "data", "install_node_exporter.sh")
+    try:
+        with open(script_path, "r", encoding="utf-8") as f:
+            template = f.read()
+    except FileNotFoundError:
+        return PlainTextResponse("# install_node_exporter.sh not found on server", status_code=404)
+
+    # 从请求推导平台对外地址（协议 + host:port）；容器 nginx 已用 $http_host 透传端口
+    base = f"{request.url.scheme}://{request.url.netloc}"
+    script = template.replace("__BK__", base)
+    return PlainTextResponse(script, media_type="text/plain; charset=utf-8")
+
+
+
 
 # ===== WebSocket 端点 =====
 @app.websocket("/ws/machine/{machine_id}")

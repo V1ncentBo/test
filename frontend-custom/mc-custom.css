@@ -525,3 +525,74 @@ html.light .mdc-panel .mdc-kpi {
 .main-area .disk-panel .mc-disk-top-i{display:flex;align-items:center;gap:var(--space-2,8px);padding:4px 0;font-size:var(--text-sm,13px)}
 .main-area .disk-panel .mc-disk-top-i .disk-pct{font-weight:var(--weight-semibold,600)}
 .main-area .disk-panel .mc-disk-top-t{margin-left:auto;font-family:var(--font-mono,ui-monospace,monospace);font-size:var(--text-xs,11px);color:var(--text-tertiary,rgba(148,163,184,.85));font-variant-numeric:tabular-nums}
+
+/* ══ MC-DEPLOY-GUIDE 部署指南页「入口自适应」提示（2026-09-24）══
+   ⚠ 注入节点没有 Vue 的 data-v-* 属性 ⇒ 原生 scoped 样式一律不生效，
+   所以**样式必须自带**；同时又必须**全部收窄在 #mcDeployEntry 下**，
+   否则全局选择器与原生同权、而 mc-custom.css 后加载 ⇒ 会反向污染原生页。 */
+#mcDeployEntry{
+  margin:0 0 20px; padding:16px 18px; border-radius:12px;
+  background:var(--card-bg,#fff); border:1px solid var(--border-color,#e5e7eb);
+  box-shadow:0 1px 2px rgba(15,23,42,.04);
+}
+#mcDeployEntry .mdg-head{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:14px}
+#mcDeployEntry .mdg-dot{width:8px;height:8px;border-radius:50%;background:var(--primary-color,#3b82f6);flex:0 0 auto}
+#mcDeployEntry .mdg-t{font-weight:600;font-size:14px;color:var(--text-color,#1f2937)}
+#mcDeployEntry .mdg-origin{
+  font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:13px;
+  padding:3px 8px;border-radius:6px;background:rgba(59,130,246,.09);color:#1d4ed8;
+}
+#mcDeployEntry .mdg-tag{font-size:12px;padding:2px 9px;border-radius:999px;border:1px solid transparent;font-weight:500}
+#mcDeployEntry .mdg-tag.is-lan{background:rgba(16,185,129,.10);color:#047857;border-color:rgba(16,185,129,.25)}
+#mcDeployEntry .mdg-tag.is-wan{background:rgba(245,158,11,.12);color:#b45309;border-color:rgba(245,158,11,.28)}
+/* 阈值取 430px 而非 300px：部署指南容器实测仅 ~704px 宽，300px 会挤出两列、每列 ~340px，长命令被 overflow-x 裁断（看不全）⇒ 430px 正好降为单列，命令完整可读 */
+#mcDeployEntry .mdg-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(430px,1fr));gap:14px}
+#mcDeployEntry .mdg-card{
+  position:relative;padding:14px 14px 12px 18px;border-radius:10px;
+  background:var(--bg-color,#f8fafc);border:1px solid var(--border-color,#e5e7eb);
+}
+#mcDeployEntry .mdg-card::before{
+  content:'';position:absolute;left:0;top:10px;bottom:10px;width:3px;border-radius:0 3px 3px 0;
+  background:var(--primary-color,#3b82f6);
+}
+#mcDeployEntry .mdg-card-hl::before{background:#f59e0b}
+#mcDeployEntry .mdg-card-h{display:flex;align-items:center;gap:8px;font-weight:600;font-size:14px;color:var(--text-color,#1f2937);margin-bottom:8px}
+#mcDeployEntry .mdg-num{
+  display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;flex:0 0 auto;
+  border-radius:6px;background:var(--primary-color,#3b82f6);color:#fff;font-size:12px;font-weight:700;
+}
+#mcDeployEntry .mdg-card-hl .mdg-num{background:#f59e0b}
+#mcDeployEntry .mdg-d{margin:0 0 10px;font-size:13px;line-height:1.7;color:var(--text-color,#475569)}
+#mcDeployEntry .mdg-code{
+  margin:0 0 8px;padding:10px 12px;border-radius:8px;background:#0f172a;color:#e2e8f0;
+  font-size:12.5px;line-height:1.65;overflow-x:auto;
+}
+#mcDeployEntry .mdg-code code{background:none;color:inherit;padding:0;border:0}
+#mcDeployEntry .mdg-note{margin:0;font-size:12px;line-height:1.6;color:#64748b}
+#mcDeployEntry .mdg-warn{
+  margin:12px 0 0;padding:9px 12px;border-radius:8px;font-size:12.5px;line-height:1.65;
+  background:rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.22);color:#b91c1c;
+}
+#mcDeployEntry code{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:12.5px}
+#mcDeployEntry .mdg-d code,#mcDeployEntry .mdg-note code,#mcDeployEntry .mdg-warn code{
+  padding:1px 5px;border-radius:4px;background:rgba(15,23,42,.06);color:#334155;
+}
+
+/* ══ MACH-HIDETIME 设备管理表格：移除「更新时间」列（2026-10-08）══
+ * 需求：监控中心 → 设备管理（/machines）表格不再显示「更新时间」列。
+ * 实测列序（13 列）：check / name / ip / type / group / status / CPU / 内存 / 磁盘 /
+ *                   子机 / 端口 / **col-time(更新时间)** / actions
+ * 实现要点：
+ *  1. 原生页由 Vue 渲染 ⇒ **只隐藏不删除**（`display:none`），保住 Vue patch 锚点，
+ *     也避免用 MutationObserver 与 Vue 重渲染互搏（见 SKILL 的「原生 Vue 节点只隐藏不删除」铁律）。
+ *  2. ⛔ 选择器必须收窄到 `.main-area .machines-page`：`col-time` 这个类名
+ *     **告警日志页（Alerts chunk）也在用**，不加前缀会反向污染告警表格。
+ *  3. 卡片视图 / 分组视图不读该列（MC-MACH-VIEW 的 rowData 只取 name/ip/type/status/metric），
+ *     故本规则对它们零影响。
+ *  4. 空态行是 `colspan="13"`：隐藏 1 列后仍声明 13 列，浏览器会补 1 个隐式空列
+ *     （表格列数取各行 colspan 之和的最大值）。对「整行居中提示」无视觉影响，已实测确认。
+ */
+.main-area .machines-page .table-wrap th.col-time,
+.main-area .machines-page .table-wrap td.col-time{
+  display:none !important;
+}

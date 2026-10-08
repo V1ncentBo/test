@@ -128,6 +128,11 @@ services:
     # 热修后的固化流程见 SKILL monitor-frontend-ops：docker commit → tag :optimized。
     image: monitor-frontend:optimized
     container_name: monitor-frontend
+    volumes:
+      # HOSTPORT-20260924：把 /api/ 的 Host 头改为 $http_host（保留非标端口），
+      # 否则后端 request.url.netloc 丢端口 → /api/install-agent.sh 生成的 BK 指向错误端口。
+      # ⛔ 挂载后改此文件只需 docker exec monitor-frontend nginx -s reload，重建不再丢失。
+      - ./frontend-custom/nginx-default.conf:/etc/nginx/conf.d/default.conf:ro
     mem_limit: 128m
     cpus: "0.5"
     restart: always

@@ -1,0 +1,598 @@
+/* ===========================================================
+   智能监控平台 · 前端定制样式（mc-custom.css）
+   ------------------------------------------------------------
+   本文件由 tools/_custom_extract.py 从生产 index.html 抽取，
+   是 2026-07 ~ 2026-09 所有前端热修的**唯一样式来源**。
+   ⛔ 不要再直接改 index.html —— 一切改动进这里。
+   由 tools/apply_custom.py 在「前端全量重建后」一键缝回 dist。
+   =========================================================== */
+/* ====ASSET-BODY-BEGIN==== */
+/* ══ 主定制样式 ══ */
+    .nav-item.res-sub { margin-top:0; }
+    .nav-item.res-sub .nav-icon { width:16px; height:16px; opacity:.85; display:inline-flex; align-items:center; justify-content:center; }
+    .nav-item.res-sub .nav-icon svg { width:100%; height:100%; }
+    .res-sub-dot { display:none; }
+    #res-main-root { height:100%; overflow:auto; }
+    /* 展开/收起箭头（SVG 16px，颜色继承 nav-item） */
+    .res-sub .rc-arrow { margin-left:auto; opacity:.65; transition:transform .2s,opacity .2s; flex-shrink:0; display:inline-flex; align-items:center; }
+    .res-sub:hover .rc-arrow { opacity:1; }
+    .res-sub.open .rc-arrow { transform:rotate(180deg); }
+    .res-sub .rc-arrow svg { width:16px; height:16px; }
+    /* 资源管理二级子项：颜色/hover/active 全部继承 nav-item（随主题切换），仅加缩进 + 默认隐藏 */
+    .nav-item.rc-sub { display:none; align-items:center; padding-left:52px !important; }
+    .nav-item.rc-sub .nav-label { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    .nav-item.rc-sub .rc-sub-cnt { flex-shrink:0; margin-left:8px; font-size:11px; line-height:1; padding:3px 8px; border-radius:9px; background:rgba(128,128,128,.18); color:inherit; min-width:20px; text-align:center; font-weight:600; }
+    /* 全站：去掉顶栏统计、顶栏右对齐 */
+    .topbar-stats { display:none !important; }
+    .topbar { justify-content:flex-end !important; }
+    /* ⛔⛔ TOPBAR-ALIGN-20260924 顶栏被 flex 压缩 3.22px ⇒ 顶栏横线与侧栏横线错位
+     * 症状：13 个注入页（/u/*）最上方横线比左侧目录栏横线「高 3px」，原生页正常。
+     * 根因：.main-area 是 display:flex; flex-direction:column; height:900px。
+     *   注入页根 #res-main-root{height:100%}（下方第 15 行）取的是 .main-area 的 **900px**，
+     *   **忽略了同级的 .topbar 56px** ⇒ 两者相加 956px > 900px，溢出 56px。
+     *   顶栏是 flex item、默认 flex-shrink:1 ⇒ 按 flex-basis 比例被压缩：
+     *     .topbar         basis 56px  → 压掉 56×(56/956)  ≈ 3.28px → 实测 52.7812px
+     *     #res-main-root  basis 900px → 压掉 ≈ 52.7px      → 实测 847.219px
+     *   而侧栏 .sidebar-brand 恒为 56px（不受 .main-area 约束）⇒ 顶栏底边框比侧栏横线高 3.22px。
+     *   原生页（/、/machines、/alerts…）不出问题：其路由视图不溢出，没有可压缩量。
+     * 修法：禁止压缩顶栏（topbar 恒 56px，与 .sidebar-brand 严格对齐）；
+     *   缺口由 #res-main-root 自行吸收 —— 它本就 overflow:auto，内部滚动，视觉无损。
+     * ⚠ 不要改 #res-main-root 的 height:100%：改成 flex:1 1 0 也能修好，但会动到资源族页面的
+     *   既有滚动行为，风险高于收益。压顶栏这一侧改动面只有 1 条声明。 */
+    .main-area > .topbar { flex-shrink: 0 !important; }
+    /* 顶栏：移除搜索 / 紧凑 / 大屏按钮，保留深色切换与时间（提高特异性以压过 SPA 注入样式） */
+    .topbar .topbar-right .cmdk-trigger { display:none !important; }
+    .topbar .topbar-right .mode-toggle[title="紧凑密度"] { display:none !important; }
+    .topbar .topbar-right .mode-toggle[title="大屏模式"] { display:none !important; }
+    /* 左下角账号区已移除（需求③：删掉账号展示/账号管理/关闭按钮） */
+    .sidebar-footer { display:none !important; }
+    /* 需求②：展开子级后导航内容溢出 → 撑高文档使整页可滚 → 侧栏被顶出视口、其 border-right(分割线) 不到底。
+       修复：导航在侧栏内部滚动（min-height:0 让 flex 项可收缩 + overflow-y:auto），侧栏恒为满高，分割线始终通到底。 */
+    .sidebar { overflow:hidden !important; }
+    .sidebar-nav { min-height:0 !important; overflow-y:auto !important; }
+    /* 监控中心父级 + 设备管理子级（需求②） */
+    .nav-item.mc-parent { margin-top:0; }
+    .nav-item.mc-parent .nav-icon { width:16px; height:16px; opacity:.85; display:inline-flex; align-items:center; justify-content:center; }
+    .nav-item.mc-parent .nav-icon svg { width:100%; height:100%; }
+    .nav-item.mc-parent .rc-arrow { margin-left:auto; opacity:.65; transition:transform .2s,opacity .2s; flex-shrink:0; display:inline-flex; align-items:center; }
+    .nav-item.mc-parent:hover .rc-arrow { opacity:1; }
+    .nav-item.mc-parent.open .rc-arrow { transform:rotate(180deg); }
+    .nav-item.mc-parent .rc-arrow svg { width:16px; height:16px; }
+    .nav-item.mc-sub { display:none; align-items:center; padding-left:52px !important; }
+    .nav-item.mc-sub .nav-label { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    /* 需求①②：被移入子级的原始顶级项在顶级隐藏（用属性选择器而非 JS 加类——Vue 重渲染会重写 class，类会被抹掉） */
+    .sidebar-nav .nav-item[data-route="/"],          .sidebar-nav .nav-item[to="/"],          .sidebar-nav .nav-item[href="/"],
+    .sidebar-nav .nav-item[data-route="/machines"], .sidebar-nav .nav-item[to="/machines"], .sidebar-nav .nav-item[href="/machines"],
+    .sidebar-nav .nav-item[data-route="/monitor"],  .sidebar-nav .nav-item[to="/monitor"],  .sidebar-nav .nav-item[href="/monitor"],
+    .sidebar-nav .nav-item[data-route="/alerts"],   .sidebar-nav .nav-item[to="/alerts"],   .sidebar-nav .nav-item[href="/alerts"] { display:none !important; }
+    /* 右上角账号组件 */
+    .rc-acct { position:relative; display:inline-flex; align-items:center; margin-right:10px; }
+    .rc-acct-btn { display:inline-flex; align-items:center; gap:6px; height:32px; padding:0 11px; border-radius:8px; border:1px solid var(--border-default,#e3e8ef); background:var(--surface-overlay,#fff); color:var(--text-primary,#1f2937); cursor:pointer; font-size:13px; }
+    .rc-acct-btn:hover { border-color:var(--accent,#1B3F7A); color:var(--accent,#1B3F7A); }
+    .rc-acct-btn .av { width:22px; height:22px; border-radius:50%; background:var(--accent,#1B3F7A); color:#fff; display:inline-flex; align-items:center; justify-content:center; font-size:12px; font-weight:600; }
+    .rc-acct-menu { position:absolute; top:38px; right:0; min-width:168px; background:#fff; border:1px solid var(--border-subtle,#e5e7eb); border-radius:10px; box-shadow:0 12px 36px rgba(0,0,0,.16); padding:6px; z-index:6000; }
+    .rc-acct-menu button { display:flex; width:100%; align-items:center; gap:8px; padding:9px 10px; border:0; background:transparent; color:var(--text-primary,#1f2937); cursor:pointer; border-radius:7px; font-size:13px; text-align:left; }
+    .rc-acct-menu button:hover { background:var(--surface-hover,#f3f6fb); }
+    .rc-acct-menu .sep { height:1px; background:var(--border-subtle,#eef1f5); margin:5px 2px; }
+    /* 无权限菜单项隐藏（管理员不隐藏） */
+    .nav-item.rc-no-perm { display:none !important; }
+    /* 资源中心模式：顶栏浅灰 */
+    body.has-res-root .topbar { background:var(--surface-root,#f5f7fa) !important; border-bottom:1px solid var(--border-subtle); color:var(--text-primary); }
+    body.has-res-root .topbar .topbar-right svg, body.has-res-root .topbar .topbar-right button { color:var(--text-primary); }
+  
+/* ===MC-BATCH:_mc_css_dashboard.css=== */
+/* ===== MC 视觉统一 · 设计令牌 + 监控总览 dashboard ===== */
+:root,[data-theme="light"]{
+  --mc-bg:#ffffff;--mc-bg-2:#f8fafc;
+  --mc-border:rgba(16,24,40,.08);--mc-border-strong:rgba(16,24,40,.12);
+  --mc-text:#0f172a;--mc-text-2:#475569;--mc-text-3:#94a3b8;
+  --mc-shadow:0 1px 2px rgba(16,24,40,.05);--mc-shadow-hover:0 8px 24px rgba(16,24,40,.10);
+  --mc-bar-1:#1B3F7A;--mc-bar-2:#16a34a;--mc-bar-3:#d97706;--mc-bar-4:#dc2626;--mc-bar-5:#7c3aed;--mc-bar-6:#0891b2;
+}
+[data-theme="dark"]{
+  --mc-bg:#0f1623;--mc-bg-2:#141d2e;
+  --mc-border:rgba(255,255,255,.08);--mc-border-strong:rgba(255,255,255,.14);
+  --mc-text:#e5e7eb;--mc-text-2:#94a3b8;--mc-text-3:#64748b;
+  --mc-shadow:0 1px 2px rgba(0,0,0,.35);--mc-shadow-hover:0 10px 28px rgba(0,0,0,.55);
+  --mc-bar-1:#5b8def;--mc-bar-2:#34d399;--mc-bar-3:#fbbf24;--mc-bar-4:#f87171;--mc-bar-5:#a78bfa;--mc-bar-6:#22d3ee;
+}
+@keyframes mcStatFade{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+@media (prefers-reduced-motion:reduce){.main-area .mc-anim{animation:none!important;opacity:1!important}}
+
+/* 监控总览 dashboard .stat-card → 硬件台账风格 */
+.main-area .stat-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:16px;margin-bottom:18px}
+.main-area .stat-card{position:relative;overflow:hidden;background:var(--mc-bg);border:1px solid var(--mc-border);border-radius:14px;padding:20px;box-shadow:var(--mc-shadow);color:var(--mc-text);opacity:0;animation:mcStatFade .5s cubic-bezier(.16,1,.3,1) both;animation-delay:calc(var(--i,0)*.09s)}
+.main-area .stat-card::after{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--bar,var(--mc-bar-1))}
+.main-area .stat-card:hover{transform:translateY(-3px);box-shadow:var(--mc-shadow-hover);transition:transform .2s,box-shadow .2s}
+.main-area .stat-card .stat-top{display:flex;align-items:center;gap:10px;margin-bottom:6px}
+.main-area .stat-card .stat-icon{display:inline-flex;width:30px;height:30px;border-radius:9px;align-items:center;justify-content:center;background:color-mix(in srgb,var(--bar,var(--mc-bar-1)) 13%,transparent);color:var(--bar,var(--mc-bar-1))}
+.main-area .stat-card .stat-icon svg{width:17px;height:17px}
+.main-area .stat-card .stat-value{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:32px;font-weight:700;line-height:1.1;margin-top:8px;letter-spacing:-.02em;color:var(--mc-text)}
+.main-area .stat-card .stat-label{font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--mc-text-3);margin-top:2px}
+.main-area .stat-card .stat-sub{font-size:11px;color:var(--mc-text-2);margin-top:6px}
+.main-area .stat-grid>.stat-card:nth-child(1){--i:0;--bar:var(--mc-bar-1)}
+.main-area .stat-grid>.stat-card:nth-child(2){--i:1;--bar:var(--mc-bar-2)}
+.main-area .stat-grid>.stat-card:nth-child(3){--i:2;--bar:var(--mc-bar-3)}
+.main-area .stat-grid>.stat-card:nth-child(4){--i:3;--bar:var(--mc-bar-4)}
+.main-area .stat-grid>.stat-card:nth-child(5){--i:4;--bar:var(--mc-bar-5)}
+.main-area .stat-grid>.stat-card:nth-child(6){--i:5;--bar:var(--mc-bar-6)}
+
+/* ===MC-BATCH:_mc_css_detail.css=== */
+/* ===== MC 视觉统一 · 机器详情 monitor-detail gauge/chart ===== */
+.main-area .gauge-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:16px;margin-bottom:16px}
+/* ⛔⛔ CHARTROW-GRIDFIX-20260924 机器详情 .chart-row 必须固定 4 轨道，禁止 auto-fit
+ * 原生 MonitorDetail-DTHa-bP2.css：.chart-row{grid-template-columns:repeat(4,1fr)}
+ * 原生模板里 4 张图卡（CPU/内存/磁盘IO/网络流量）**各自内联** grid-column:span 2，
+ * 即「4 轨道下 span 2 = 恰好半行」。此前本文件把 .chart-row 与 .gauge-row 合并改成
+ * repeat(auto-fit,minmax(220px,1fr))，轨道数随视口浮动，实测（rowW / 轨道 / 每卡占比）：
+ *   1280 → 1012 / 4 轨 / 49.2%  ✅ 刚好铺满（唯一正常档）
+ *   1440 → 1172 / 5 轨 / 39.2%  ❌ 每行右侧空 1 条轨道 ≈ 238px
+ *   1600 → 1332 / 5 轨 / 39.3%  ❌ 每行右侧空 1 条轨道 ≈ 270px
+ *   1920 → 1500 / 6 轨 / 32.6%  ❌ 每行右侧空 2 条轨道 ≈ 473px
+ * 修法：拆开两条规则，.chart-row 回归 4 轨道 ⇒ 内联 span 2 恒等于半行（2×2 满宽）；
+ * 同时天然修好单图卡机型（45 号内联 span 4 = 整行满宽）。
+ * 用 minmax(0,1fr) 而非原生 1fr：避免 ECharts 画布固有宽度把轨道撑破。
+ * ⚠ .mdc-panel（同环比对比）用 grid-column:1/-1，任何轨道数下都是整行，不受影响。 */
+.main-area .chart-row{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:16px;margin-bottom:16px}
+/* 窄屏降级：2 轨道不够 span 2/span 4 摆，直接全部摊成整行（1 张图 1 行） */
+@media (max-width:1100px){
+.main-area .chart-row{grid-template-columns:repeat(2,minmax(0,1fr))}
+.main-area .chart-row>*{grid-column:1/-1!important}
+}
+.main-area .gauge-card,.main-area .chart-panel{position:relative;overflow:hidden;background:var(--mc-bg);border:1px solid var(--mc-border);border-radius:14px;padding:18px;box-shadow:var(--mc-shadow);color:var(--mc-text);opacity:0;animation:mcStatFade .5s cubic-bezier(.16,1,.3,1) both;animation-delay:calc(var(--i,0)*.09s)}
+.main-area .gauge-card::after,.main-area .chart-panel::after{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--bar,var(--mc-bar-1))}
+.main-area .gauge-card:hover,.main-area .chart-panel:hover{transform:translateY(-3px);box-shadow:var(--mc-shadow-hover);transition:transform .2s,box-shadow .2s}
+.main-area .gauge-title,.main-area .chart-title{font-size:12px;font-weight:600;letter-spacing:.04em;color:var(--mc-text-2);margin-bottom:10px}
+.main-area .gauge-body,.main-area .chart-body{min-height:120px}
+.main-area .chart-header{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:8px;flex-wrap:wrap}
+.main-area .chart-header button,.main-area .chart-header [class*="tab"],.main-area .chart-header [class*="range"]{font-size:12px;padding:3px 10px;border-radius:8px;border:1px solid var(--mc-border);background:var(--mc-bg-2);color:var(--mc-text-2);cursor:pointer;transition:all .15s}
+.main-area .chart-header button:hover,.main-area .chart-header [class*="tab"]:hover,.main-area .chart-header [class*="range"]:hover{color:var(--mc-text);border-color:var(--mc-border-strong)}
+.main-area .chart-header [class*="active"],.main-area .chart-header .is-active{background:var(--mc-bar-1);color:#fff;border-color:var(--mc-bar-1)}
+.main-area .gauge-row>.gauge-card:nth-child(1){--i:0;--bar:var(--mc-bar-1)}
+.main-area .gauge-row>.gauge-card:nth-child(2){--i:1;--bar:var(--mc-bar-2)}
+.main-area .gauge-row>.gauge-card:nth-child(3){--i:2;--bar:var(--mc-bar-3)}
+.main-area .gauge-row>.gauge-card:nth-child(4){--i:3;--bar:var(--mc-bar-4)}
+.main-area .chart-row>.chart-panel:nth-child(1){--i:0;--bar:var(--mc-bar-5)}
+.main-area .chart-row>.chart-panel:nth-child(2){--i:1;--bar:var(--mc-bar-6)}
+.main-area .chart-row>.chart-panel:nth-child(3){--i:2;--bar:var(--mc-bar-1)}
+.main-area .chart-row>.chart-panel:nth-child(4){--i:3;--bar:var(--mc-bar-2)}
+
+/* ===MC-BATCH:_mc_css_list.css=== */
+/* ===== MC 视觉统一 · 列表三页 表格/卡片/状态 ===== */
+.main-area table{width:100%;border-collapse:collapse}
+.main-area tbody tr{transition:background .15s}
+.main-area tbody tr:hover{background:var(--mc-bg-2)}
+.main-area th,.main-area td{padding:10px 14px;border-bottom:1px solid var(--mc-border);color:var(--mc-text);font-size:13px}
+.main-area th{color:var(--mc-text-2);font-weight:600;font-size:12px;text-transform:uppercase;letter-spacing:.03em}
+.main-area .machine-mini-card,.main-area .mini-metrics{background:var(--mc-bg);border:1px solid var(--mc-border);border-radius:12px;padding:14px;box-shadow:var(--mc-shadow);transition:transform .2s,box-shadow .2s;color:var(--mc-text)}
+.main-area .machine-mini-card:hover{transform:translateY(-3px);box-shadow:var(--mc-shadow-hover)}
+.main-area .status-pill,.main-area .status-badge{border-radius:999px;padding:2px 10px;font-size:12px;font-weight:600}
+.main-area .title-count{display:inline-flex;align-items:center;gap:6px;background:var(--mc-bg);border:1px solid var(--mc-border);border-left:3px solid var(--mc-bar-4);border-radius:10px;padding:6px 12px;font-weight:700;color:var(--mc-text)}
+.main-area .topbar-stats .stat-pill{border-radius:999px}
+/* ══ mc-mach-layout 排版 ══ */
+/* ===MC-MACH-LAYOUT 2026-09-07===
+   设备管理 /machines 下半部分（工具栏 + 表格）排版对齐 资源台账 / 硬件台账
+   仅限 .machines-page，零影响其它页面；颜色全走 --mc-* 令牌（明暗自适应）
+*/
+.main-area .machines-page .toolbar{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:14px}
+.main-area .machines-page .toolbar input,
+.main-area .machines-page .toolbar select{
+  background:var(--mc-bg);border:1px solid var(--mc-border-strong);border-radius:8px;
+  padding:8px 12px;font-size:13px;color:var(--mc-text);
+  transition:border-color .15s,box-shadow .15s}
+.main-area .machines-page .toolbar input::placeholder{color:var(--mc-text-3)}
+.main-area .machines-page .toolbar select{padding-right:30px;min-width:118px;cursor:pointer}
+.main-area .machines-page .toolbar input:focus,
+.main-area .machines-page .toolbar select:focus{
+  outline:none;border-color:var(--mc-bar-1);box-shadow:0 0 0 3px rgba(148,163,184,.18)}
+.main-area .machines-page .toolbar .search-input{min-width:220px;max-width:340px;flex:1 1 220px}
+
+/* 表格卡片化：与 .rc-table（资源/硬件台账）一致 */
+.main-area .machines-page .table-wrap{
+  background:var(--mc-bg);border:1px solid var(--mc-border-strong);border-radius:12px;
+  box-shadow:var(--mc-shadow);overflow-x:auto;margin-bottom:14px}
+.main-area .machines-page table{width:100%;border-collapse:collapse;font-size:13px}
+.main-area .machines-page thead th{
+  background:var(--mc-bg-2);text-align:left;padding:11px 16px;font-size:10px;font-weight:600;
+  letter-spacing:.06em;text-transform:uppercase;color:var(--mc-text-3);
+  border-bottom:1px solid var(--mc-border-strong);white-space:nowrap}
+.main-area .machines-page tbody td{
+  padding:12px 16px;border-bottom:1px solid var(--mc-border);vertical-align:middle;font-size:13px}
+.main-area .machines-page tbody tr{transition:background .15s}
+.main-area .machines-page tbody tr:hover td{background:var(--mc-bg-2)}
+.main-area .machines-page tbody tr:last-child td{border-bottom:none}
+
+/* 状态 pill / 行操作按钮：与台账的 chip、描边按钮一致 */
+.main-area .machines-page .status-pill,
+.main-area .machines-page .status-badge{padding:4px 12px;font-size:12px;border-radius:999px}
+.main-area .machines-page tbody td:last-child button,
+.main-area .machines-page tbody td:last-child a{
+  border:1px solid var(--mc-border-strong);border-radius:8px;padding:4px 9px;font-size:12px;
+  background:var(--mc-bg);color:var(--mc-text-2);transition:color .15s,border-color .15s,background .15s}
+.main-area .machines-page tbody td:last-child button:hover,
+.main-area .machines-page tbody td:last-child a:hover{
+  color:var(--mc-text);border-color:var(--mc-bar-1);background:var(--mc-bg-2)}
+
+/* ══ rm-collapse-btn 去折叠按钮 ══ */
+/* ===RM-COLLAPSE 2026-09-07=== 移除左上角折叠侧栏功能（需求：删掉折叠按钮） */
+/* 1) 隐藏顶部品牌区的折叠按钮 —— 这是页面上唯一能触发折叠的入口 */
+.sidebar-brand .collapse-btn{display:none!important}
+/* 2) 页脚折叠按钮（原已随页脚隐藏）一并禁用，双保险 */
+.sidebar-footer .collapse-btn{display:none!important}
+/* 3) 兜底：即便其它代码误触发 collapsed 类，也强制保持侧栏展开、导航文字可见，
+       .main-area 为 flex:1 自适应，宽度恒为 220px 不影响右侧内容布局（彻底删除折叠行为） */
+.sidebar.collapsed{width:220px!important;min-width:220px!important}
+/* 品牌标题（智能监控平台）：Vue 用 v-show 内联 display:none 隐藏，用 !important 压回显示 */
+.sidebar.collapsed .brand-text{display:block!important}
+.sidebar.collapsed .nav-label,
+.sidebar.collapsed .nav-text,
+.sidebar.collapsed .nav-sub,
+.sidebar.collapsed .nav-indicator,
+.sidebar.collapsed .nav-group-title{opacity:1!important;pointer-events:auto!important}
+/* ══ rm-topbar-time 去顶栏时间 ══ */
+/* ===RM-TOPBAR-TIME 2026-09-07=== 移除右上角时间展示（需求） */
+.topbar .topbar-right .topbar-time{display:none!important}
+
+/* ===MC-MACH-VIEW 2026-09-16=== 设备管理「列表 / 卡片」视图切换
+   需求：/machines 加一个切换按钮，把表格列表变成「监控详情 /monitor」那种卡片。
+   说明：.machine-mini-card / .mini-metrics 的「外观」（白底/描边/圆角/内边距/悬浮）已由
+        本文件上方既有规则提供，此处只补「内部子元素布局」+ 网格容器 + 切换控件。
+        颜色全走 --mc-* 令牌，明暗主题自适应；仅状态点/进度条用固定语义色（与监控详情一致）。
+*/
+/* 切换控件：绝对定位挂 page-header 右侧，不动原生文档流 */
+.main-area .machines-page .page-header{position:relative}
+.main-area .mc-view-switch{position:absolute;right:0;top:50%;transform:translateY(-50%);display:inline-flex;align-items:center;gap:2px;background:var(--mc-bg-2);border:1px solid var(--mc-border-strong);border-radius:9px;padding:2px}
+.main-area .mc-view-switch .mc-vs-btn{display:inline-flex;align-items:center;justify-content:center;width:30px;height:26px;border:0;border-radius:7px;background:transparent;color:var(--mc-text-3);cursor:pointer;transition:background .15s,color .15s}
+.main-area .mc-view-switch .mc-vs-btn svg{width:15px;height:15px}
+.main-area .mc-view-switch .mc-vs-btn:hover{color:var(--mc-text)}
+.main-area .mc-view-switch .mc-vs-btn.is-active{background:var(--mc-bar-1);color:#fff}
+
+/* 卡片网格容器（4 列 @桌面；窄屏自动降列） */
+.main-area .mc-card-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:16px;margin-bottom:14px}
+.main-area .mc-card-grid .mc-card-empty{grid-column:1/-1;padding:44px 0;text-align:center;color:var(--mc-text-3);font-size:13px}
+.main-area .mc-card-grid .machine-mini-card{display:block;cursor:pointer;opacity:0;animation:mcStatFade .5s cubic-bezier(.16,1,.3,1) both;animation-delay:calc(var(--i,0)*.05s)}
+
+/* 卡片内部布局（对齐监控详情 .machine-mini-card）
+   ⚠ 必须收窄到 .mc-card-grid 作用域：/monitor 页原生卡片用的是同名 class，
+   而 Vue scoped 只给末级选择器加 [data-v-*]，与本文件同特异性时「后加载者胜」——
+   若写成全局 `.main-area .mini-*`，会把 /monitor 的 label 字号(12→11px/宽32→34px)
+   与在线点光晕(box-shadow 0 0 6px→0 0 0 3px)一并改掉（2026-09-16 发现并修正）。 */
+.main-area .mc-card-grid .mini-header{display:flex;align-items:center;gap:6px;margin-bottom:6px}
+.main-area .mc-card-grid .mini-name{flex:1 1 auto;min-width:0;font-size:15px;font-weight:600;color:var(--mc-text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.main-area .mc-card-grid .status-dot{width:8px;height:8px;flex:0 0 8px;border-radius:50%;background:var(--mc-text-3)}
+.main-area .mc-card-grid .status-dot.online{background:#52c41a;box-shadow:0 0 0 3px rgba(82,196,26,.15)}
+.main-area .mc-card-grid .status-dot.offline{background:#c0c4cc;box-shadow:0 0 0 3px rgba(192,196,204,.18)}
+.main-area .mc-card-grid .mini-ip{font-size:12px;color:var(--mc-text-2);margin-bottom:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.main-area .mc-card-grid .mini-metrics{display:flex;flex-direction:column;gap:6px}
+.main-area .mc-card-grid .mini-metric{display:flex;align-items:center;gap:8px}
+.main-area .mc-card-grid .mini-metric .label{flex:0 0 34px;font-size:11px;letter-spacing:.04em;color:var(--mc-text-3)}
+.main-area .mc-card-grid .mini-metric .mc-prog{flex:1 1 auto;min-width:0}
+.main-area .mc-card-grid .mini-metric .mc-prog-outer{display:block;height:6px;border-radius:100px;background:rgba(148,163,184,.28);overflow:hidden}
+.main-area .mc-card-grid .mini-metric .mc-prog-inner{display:block;height:6px;border-radius:100px;transition:width .45s cubic-bezier(.16,1,.3,1)}
+.main-area .mc-card-grid .mini-metric .mc-prog-txt{flex:0 0 48px;text-align:right;font-size:12px;color:var(--mc-text-2);font-variant-numeric:tabular-nums}
+
+/* hover 浮出的「编辑」入口：默认 width:0 隐藏（静态视觉与监控详情卡片 100% 一致），悬停才展开 */
+.main-area .mc-card-grid .mc-mini-edit{display:inline-flex;align-items:center;justify-content:center;width:0;flex:0 0 0;height:22px;padding:0;overflow:hidden;opacity:0;border:0;background:transparent;color:var(--mc-text-3);border-radius:6px;cursor:pointer;transition:width .18s,flex-basis .18s,opacity .18s,color .15s}
+.main-area .mc-card-grid .mc-mini-edit svg{width:14px;height:14px;flex:0 0 14px}
+.main-area .mc-card-grid .machine-mini-card:hover .mc-mini-edit{width:24px;flex-basis:24px;opacity:1}
+.main-area .mc-card-grid .mc-mini-edit:hover{color:var(--mc-bar-1)}
+@media (prefers-reduced-motion:reduce){.main-area .mc-card-grid .machine-mini-card{animation:none!important;opacity:1!important}}
+
+/* ══ MC-MACH-GROUPS 设备管理「按分组」视图（2026-09-17 新增）══
+   数据源 /api/advanced/group-stats；外观复用 .machine-mini-card 基础规则，
+   ⚠ 内部布局必须收窄到 .mc-group-grid（与 .mc-card-grid 同理，避免污染 /monitor 原生同名 class） */
+.main-area .mc-group-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:16px;margin-bottom:14px}
+.main-area .mc-group-grid .mc-card-empty{grid-column:1/-1;padding:44px 0;text-align:center;color:var(--mc-text-3);font-size:13px}
+.main-area .mc-group-grid .machine-mini-card{display:block;cursor:pointer;opacity:0;animation:mcStatFade .5s cubic-bezier(.16,1,.3,1) both;animation-delay:calc(var(--i,0)*.05s)}
+.main-area .mc-group-grid .mini-header{display:flex;align-items:center;gap:8px;margin-bottom:6px}
+.main-area .mc-group-grid .mini-name{flex:1 1 auto;min-width:0;font-size:15px;font-weight:600;color:var(--mc-text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.main-area .mc-group-grid .mc-group-rate{flex:0 0 auto;font-size:13px;font-weight:700;font-variant-numeric:tabular-nums}
+.main-area .mc-group-grid .mini-ip{font-size:12px;color:var(--mc-text-2);margin-bottom:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.main-area .mc-group-grid .mini-metrics{display:flex;align-items:center;gap:8px}
+.main-area .mc-group-grid .mini-metrics .label{flex:0 0 34px;font-size:11px;letter-spacing:.04em;color:var(--mc-text-3)}
+.main-area .mc-group-grid .mini-metrics .mc-prog{flex:1 1 auto;min-width:0}
+.main-area .mc-group-grid .mini-metrics .mc-prog-outer{display:block;height:6px;border-radius:100px;background:rgba(148,163,184,.28);overflow:hidden}
+.main-area .mc-group-grid .mini-metrics .mc-prog-inner{display:block;height:6px;border-radius:100px;transition:width .45s cubic-bezier(.16,1,.3,1)}
+.main-area .mc-group-grid .mini-metrics .mc-prog-txt{flex:0 0 52px;text-align:right;font-size:12px;color:var(--mc-text-2);font-variant-numeric:tabular-nums}
+@media (prefers-reduced-motion:reduce){.main-area .mc-group-grid .machine-mini-card{animation:none!important;opacity:1!important}}
+
+/* ══ MC-MD-COMPARE 设备详情「同环比对比」panel ══
+ * 2026-09-17 新增。全部选择器收窄在 .mdc-panel / #mc-md-compare 内，
+ * 绝不做全局覆盖（遵循 mc-custom.css 的 scoped 双向边界铁律）。
+ * 颜色一律走平台既有 CSS 变量，无变量时给与原生 .chart-panel 一致的兜底色。 */
+/* ⚠ 原生 .main-area .chart-row 在 mc-custom.css 里已被改成
+ *   grid-template-columns: repeat(auto-fit, minmax(220px, 1fr))
+ *   4 个原生面板占满后，auto-fit 会再生成一个 **0px 宽的幽灵轨道**，
+ *   此时 `span 2` 会落进幽灵轨道 → 面板被压成单列宽（658px）。
+ *   修法：显式声明占满**全部**轨道（-1 表示最后一根网格线），一行独占。 */
+.mdc-panel {
+  grid-column: 1 / -1;
+  width: 100%;
+}
+.mdc-panel .mdc-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--space-3, 12px);
+  margin-bottom: var(--space-3, 12px);
+  flex-wrap: wrap;
+}
+.mdc-panel .mdc-title-wrap {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3, 12px);
+  min-width: 0;
+}
+.mdc-panel .mdc-legend {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: var(--text-xs, 11px);
+  color: var(--text-tertiary, rgba(148, 163, 184, .9));
+  letter-spacing: .02em;
+  white-space: nowrap;
+}
+.mdc-panel .mdc-legend i {
+  display: inline-block;
+  width: 14px;
+  height: 0;
+  border-top: 2px solid currentColor;
+  margin-right: 3px;
+  vertical-align: middle;
+}
+.mdc-panel .mdc-legend .mdc-l1 {
+  color: #3b82f6;
+}
+.mdc-panel .mdc-legend .mdc-l2 {
+  border-top-style: dashed;
+  color: #94a3b8;
+  margin-left: 10px;
+}
+.mdc-panel .mdc-ctrl {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2, 8px);
+  flex-wrap: wrap;
+}
+.mdc-panel .mdc-segs {
+  display: inline-flex;
+  gap: 2px;
+  background: var(--surface-default, rgba(255, 255, 255, .04));
+  border-radius: var(--radius-sm, 6px);
+  padding: 2px;
+}
+.mdc-panel .mdc-seg {
+  padding: 3px var(--space-3, 12px);
+  border: none;
+  border-radius: var(--radius-sm, 6px);
+  background: transparent;
+  color: var(--text-secondary, rgba(203, 213, 225, .9));
+  font-size: var(--text-xs, 11px);
+  font-weight: var(--weight-medium, 500);
+  cursor: pointer;
+  transition: all var(--duration-fast, .15s);
+  font-family: inherit;
+}
+.mdc-panel .mdc-seg:hover {
+  color: var(--text-primary, #f1f5f9);
+}
+.mdc-panel .mdc-seg[data-on="1"] {
+  background: var(--accent, #3b82f6);
+  color: #fff;
+}
+.mdc-panel .mdc-tab {
+  padding: 3px var(--space-3, 12px);
+  border: none;
+  border-radius: var(--radius-sm, 6px);
+  background: transparent;
+  color: var(--text-secondary, rgba(203, 213, 225, .9));
+  font-size: var(--text-xs, 11px);
+  font-weight: var(--weight-medium, 500);
+  cursor: pointer;
+  transition: all var(--duration-fast, .15s);
+  font-family: inherit;
+}
+.mdc-panel .mdc-tab:hover {
+  color: var(--text-primary, #f1f5f9);
+}
+.mdc-panel .mdc-tab[data-on="1"] {
+  background: var(--surface-raised, rgba(255, 255, 255, .1));
+  color: var(--text-primary, #f1f5f9);
+}
+
+/* KPI 三卡 */
+.mdc-panel .mdc-kpis {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: var(--space-3, 12px);
+  margin-bottom: var(--space-3, 12px);
+}
+.mdc-panel .mdc-kpi {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: var(--space-3, 10px) var(--space-4, 14px);
+  border-radius: var(--radius-md, 8px);
+  background: var(--surface-default, rgba(255, 255, 255, .03));
+  border: 1px solid oklch(70% .06 210 / .10);
+}
+.mdc-panel .mdc-kpi-k {
+  font-size: var(--text-xs, 11px);
+  color: var(--text-tertiary, rgba(148, 163, 184, .9));
+  letter-spacing: .04em;
+}
+.mdc-panel .mdc-kpi-v {
+  font-size: 20px;
+  font-weight: var(--weight-semibold, 600);
+  font-variant-numeric: tabular-nums;
+  line-height: 1.15;
+}
+.mdc-panel .mdc-kpi-s {
+  font-size: var(--text-xs, 11px);
+  color: var(--text-tertiary, rgba(148, 163, 184, .7));
+}
+
+/* 曲线 */
+.mdc-panel .mdc-chart {
+  border-radius: var(--radius-md, 8px);
+  padding: 4px 2px 2px;
+  color: var(--text-secondary, #cbd5e1);
+}
+.mdc-panel .mdc-chart svg {
+  max-width: 100%;
+}
+
+/* 基线条 */
+.mdc-panel .mdc-baseline {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3, 12px);
+  flex-wrap: wrap;
+  margin-top: var(--space-3, 12px);
+  padding-top: var(--space-3, 10px);
+  border-top: 1px solid oklch(70% .06 210 / .10);
+}
+.mdc-panel .mdc-bl-h {
+  font-size: var(--text-xs, 11px);
+  color: var(--text-tertiary, rgba(148, 163, 184, .9));
+  letter-spacing: .04em;
+  text-transform: uppercase;
+}
+.mdc-panel .mdc-bl {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--text-xs, 11px);
+  color: var(--text-secondary, rgba(203, 213, 225, .9));
+  font-variant-numeric: tabular-nums;
+}
+.mdc-panel .mdc-bl i {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex: 0 0 auto;
+}
+.mdc-panel .mdc-bl-n {
+  color: var(--text-primary, #f1f5f9);
+  font-weight: var(--weight-medium, 500);
+}
+.mdc-panel .mdc-bl-v2 {
+  color: var(--text-tertiary, rgba(148, 163, 184, .8));
+}
+
+.mdc-panel .mdc-empty {
+  padding: var(--space-6, 28px) 0;
+  text-align: center;
+  font-size: var(--text-sm, 13px);
+  color: var(--text-tertiary, rgba(148, 163, 184, .8));
+}
+
+/* 亮色主题：参考线与网格需要更强的对比 */
+:root[data-theme="light"] .mdc-panel .mdc-kpi,
+html.light .mdc-panel .mdc-kpi {
+  background: rgba(15, 23, 42, .03);
+}
+
+/* ⛔⛔ MC-DISK-PRED-20260924 监控总览「磁盘预测」卡片
+ * ⛔⛔ 原生那一整套 .disk-alert / .disk-name / .disk-pct / .disk-days / .disk-msg
+ * 全部是 Vue **scoped** 选择器（`[data-v-313c1150]`）。而本模块注入的节点**没有**
+ * 这个属性 ⇒ 原生规则根本不命中（实测 computed `display:block`、`flex-wrap:nowrap`、
+ * 规则枚举为空），表现为四段文案挤在一行、.disk-msg 的 `width:100%` 换行失效。
+ * ⇒ 因此这里**必须把原生声明逐条复制**过来，绝不能假设原生 CSS 会作用到注入节点。
+ * ⚠ 全部收窄在 .mc-disk-host 内：原生自己渲染的行不受任何影响，零视觉回归。
+ * ⚠ notice（≤90 天）档原生不存在，这里补齐；.disk-days 的底色跟随本行等级
+ *   （原生把 .disk-days 写死 var(--danger)，warning 行会显示成红色「紧急」观感）。 */
+.main-area .disk-panel .mc-disk-host{display:block;text-align:left;align-items:stretch;justify-content:flex-start;gap:0;padding:0!important;color:inherit}
+.main-area .disk-panel .mc-disk-host .disk-alert{display:flex;align-items:center;gap:var(--space-2,8px);flex-wrap:wrap;padding:8px 10px;margin-bottom:6px;border-radius:var(--radius-md,8px);font-size:var(--text-sm,13px)}
+.main-area .disk-panel .mc-disk-host>.disk-alert:last-child{margin-bottom:0}
+.main-area .disk-panel .mc-disk-host .disk-alert.critical{background:var(--danger-subtle,rgba(248,113,113,.12));border-left:3px solid var(--danger,#f87171)}
+.main-area .disk-panel .mc-disk-host .disk-alert.warning{background:var(--warning-subtle,rgba(251,191,36,.12));border-left:3px solid var(--warning,#f59e0b)}
+.main-area .disk-panel .mc-disk-host .disk-alert.notice{background:var(--warning-subtle,rgba(251,191,36,.12));border-left:3px solid var(--warning,#f59e0b)}
+.main-area .disk-panel .mc-disk-host .disk-name{font-weight:var(--weight-medium,500);flex:0 1 auto;max-width:46%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.main-area .disk-panel .mc-disk-host .disk-pct{font-family:var(--font-mono,ui-monospace,monospace);font-weight:var(--weight-semibold,600);font-variant-numeric:tabular-nums}
+.main-area .disk-panel .mc-disk-host .disk-days{padding:1px 6px;border-radius:4px;font-size:11px;font-weight:var(--weight-semibold,600);background:var(--danger,#f87171);color:#fff}
+.main-area .disk-panel .mc-disk-host .disk-alert.warning .disk-days,
+.main-area .disk-panel .mc-disk-host .disk-alert.notice .disk-days{background:var(--warning,#f59e0b);color:#fff}
+.main-area .disk-panel .mc-disk-host .disk-msg{color:var(--text-secondary,rgba(203,213,225,.9));font-size:var(--text-xs,11px);width:100%}
+
+/* 三档皆空：明确「有数据、都健康」，并附带使用率 Top3 */
+.main-area .disk-panel .mc-disk-ok{display:flex;flex-direction:column;gap:2px;padding:10px 12px;border-radius:var(--radius-md,8px);background:var(--success-subtle,rgba(52,211,153,.12));border-left:3px solid var(--success,#34d399)}
+.main-area .disk-panel .mc-disk-ok-t{font-size:var(--text-sm,13px);font-weight:var(--weight-semibold,600);color:var(--success,#34d399)}
+.main-area .disk-panel .mc-disk-ok-d{font-size:var(--text-xs,11px);color:var(--text-tertiary,rgba(148,163,184,.85))}
+.main-area .disk-panel .mc-disk-top{margin-top:10px;padding-top:9px;border-top:.5px solid var(--border-subtle,rgba(148,163,184,.18))}
+.main-area .disk-panel .mc-disk-top-h{display:block;font-size:var(--text-xs,11px);letter-spacing:.04em;color:var(--text-tertiary,rgba(148,163,184,.85));margin-bottom:2px}
+.main-area .disk-panel .mc-disk-top-i{display:flex;align-items:center;gap:var(--space-2,8px);padding:4px 0;font-size:var(--text-sm,13px)}
+.main-area .disk-panel .mc-disk-top-i .disk-pct{font-weight:var(--weight-semibold,600)}
+.main-area .disk-panel .mc-disk-top-t{margin-left:auto;font-family:var(--font-mono,ui-monospace,monospace);font-size:var(--text-xs,11px);color:var(--text-tertiary,rgba(148,163,184,.85));font-variant-numeric:tabular-nums}
+
+/* ══ MC-DEPLOY-GUIDE 部署指南页「入口自适应」提示（2026-09-24）══
+   ⚠ 注入节点没有 Vue 的 data-v-* 属性 ⇒ 原生 scoped 样式一律不生效，
+   所以**样式必须自带**；同时又必须**全部收窄在 #mcDeployEntry 下**，
+   否则全局选择器与原生同权、而 mc-custom.css 后加载 ⇒ 会反向污染原生页。 */
+#mcDeployEntry{
+  margin:0 0 20px; padding:16px 18px; border-radius:12px;
+  background:var(--card-bg,#fff); border:1px solid var(--border-color,#e5e7eb);
+  box-shadow:0 1px 2px rgba(15,23,42,.04);
+}
+#mcDeployEntry .mdg-head{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:14px}
+#mcDeployEntry .mdg-dot{width:8px;height:8px;border-radius:50%;background:var(--primary-color,#3b82f6);flex:0 0 auto}
+#mcDeployEntry .mdg-t{font-weight:600;font-size:14px;color:var(--text-color,#1f2937)}
+#mcDeployEntry .mdg-origin{
+  font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:13px;
+  padding:3px 8px;border-radius:6px;background:rgba(59,130,246,.09);color:#1d4ed8;
+}
+#mcDeployEntry .mdg-tag{font-size:12px;padding:2px 9px;border-radius:999px;border:1px solid transparent;font-weight:500}
+#mcDeployEntry .mdg-tag.is-lan{background:rgba(16,185,129,.10);color:#047857;border-color:rgba(16,185,129,.25)}
+#mcDeployEntry .mdg-tag.is-wan{background:rgba(245,158,11,.12);color:#b45309;border-color:rgba(245,158,11,.28)}
+/* 阈值取 430px 而非 300px：部署指南容器实测仅 ~704px 宽，300px 会挤出两列、每列 ~340px，长命令被 overflow-x 裁断（看不全）⇒ 430px 正好降为单列，命令完整可读 */
+#mcDeployEntry .mdg-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(430px,1fr));gap:14px}
+#mcDeployEntry .mdg-card{
+  position:relative;padding:14px 14px 12px 18px;border-radius:10px;
+  background:var(--bg-color,#f8fafc);border:1px solid var(--border-color,#e5e7eb);
+}
+#mcDeployEntry .mdg-card::before{
+  content:'';position:absolute;left:0;top:10px;bottom:10px;width:3px;border-radius:0 3px 3px 0;
+  background:var(--primary-color,#3b82f6);
+}
+#mcDeployEntry .mdg-card-hl::before{background:#f59e0b}
+#mcDeployEntry .mdg-card-h{display:flex;align-items:center;gap:8px;font-weight:600;font-size:14px;color:var(--text-color,#1f2937);margin-bottom:8px}
+#mcDeployEntry .mdg-num{
+  display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;flex:0 0 auto;
+  border-radius:6px;background:var(--primary-color,#3b82f6);color:#fff;font-size:12px;font-weight:700;
+}
+#mcDeployEntry .mdg-card-hl .mdg-num{background:#f59e0b}
+#mcDeployEntry .mdg-d{margin:0 0 10px;font-size:13px;line-height:1.7;color:var(--text-color,#475569)}
+#mcDeployEntry .mdg-code{
+  margin:0 0 8px;padding:10px 12px;border-radius:8px;background:#0f172a;color:#e2e8f0;
+  font-size:12.5px;line-height:1.65;overflow-x:auto;
+}
+#mcDeployEntry .mdg-code code{background:none;color:inherit;padding:0;border:0}
+#mcDeployEntry .mdg-note{margin:0;font-size:12px;line-height:1.6;color:#64748b}
+#mcDeployEntry .mdg-warn{
+  margin:12px 0 0;padding:9px 12px;border-radius:8px;font-size:12.5px;line-height:1.65;
+  background:rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.22);color:#b91c1c;
+}
+#mcDeployEntry code{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:12.5px}
+#mcDeployEntry .mdg-d code,#mcDeployEntry .mdg-note code,#mcDeployEntry .mdg-warn code{
+  padding:1px 5px;border-radius:4px;background:rgba(15,23,42,.06);color:#334155;
+}
+
+/* ══ MACH-HIDETIME 设备管理表格：移除「更新时间」列（2026-10-08）══
+ * 需求：监控中心 → 设备管理（/machines）表格不再显示「更新时间」列。
+ * 实测列序（13 列）：check / name / ip / type / group / status / CPU / 内存 / 磁盘 /
+ *                   子机 / 端口 / **col-time(更新时间)** / actions
+ * 实现要点：
+ *  1. 原生页由 Vue 渲染 ⇒ **只隐藏不删除**（`display:none`），保住 Vue patch 锚点，
+ *     也避免用 MutationObserver 与 Vue 重渲染互搏（见 SKILL 的「原生 Vue 节点只隐藏不删除」铁律）。
+ *  2. ⛔ 选择器必须收窄到 `.main-area .machines-page`：`col-time` 这个类名
+ *     **告警日志页（Alerts chunk）也在用**，不加前缀会反向污染告警表格。
+ *  3. 卡片视图 / 分组视图不读该列（MC-MACH-VIEW 的 rowData 只取 name/ip/type/status/metric），
+ *     故本规则对它们零影响。
+ *  4. 空态行是 `colspan="13"`：隐藏 1 列后仍声明 13 列，浏览器会补 1 个隐式空列
+ *     （表格列数取各行 colspan 之和的最大值）。对「整行居中提示」无视觉影响，已实测确认。
+ */
+.main-area .machines-page .table-wrap th.col-time,
+.main-area .machines-page .table-wrap td.col-time{
+  display:none !important;
+}

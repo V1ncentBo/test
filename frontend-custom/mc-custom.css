@@ -596,3 +596,389 @@ html.light .mdc-panel .mdc-kpi {
 .main-area .machines-page .table-wrap td.col-time{
   display:none !important;
 }
+
+/* ══════════════════════════════════════════════════════════════════════════════
+ * MC-3PAGE-POLISH  原生页视觉优化：AI 分析 / 数据报表 / 部署指南（2026-10-09）
+ * ──────────────────────────────────────────────────────────────────────────────
+ * 三页都是【编译进 dist 的原生 Vue 页】（AIAnalysis / Reports / DeployGuide chunk），
+ * 按铁律**不改源码、不重建 dist**，只在 mc-custom.css 里追加样式；原生节点只覆盖样式，
+ * 不删不改（display:none 都不用，避免破坏 patch 锚点）。
+ *
+ * ⛔⛔ 选择器铁律（本轮逐条实测得出，改本区前务必遵守）
+ *   1) 作用域前缀一律用 `.main-area :is(.ai-page,.reports-page,.deploy-guide)`：
+ *      · 已实测原生规则**全部是「单类 + [data-v-xxx]」= 特异性 (0,2,0)**
+ *        （全站**零** !important，唯一一条是 Reports 的 .btn-sm[padding]）。
+ *      · `:is()` 取入参最大值 ⇒ 前缀 = (0,1,0)[.main-area] + (0,1,0)[:is] = (0,2,0)，
+ *        再加元素类 = **(0,3,0)，严格高于原生，不依赖加载顺序**。
+ *      · ⚠ 不要图省事用 `:where()`（= (0,0,0)）：前缀只剩 (0,2,0) 与原生**打平**，
+ *        平局由「源顺序」决定 —— 实测 mc-custom 恰好排在 chunk CSS 之后所以**看起来能赢**，
+ *        但一旦加载顺序变化（chunk 先到）整区会静默失效。故一律用 `:is()`。
+ *   2) 原生【状态组合】规则（如 `.report-item.active[data-v]`）也是 (0,3,0) ⇒ 改状态元素时
+ *      把状态类一并写进选择器（`.report-item.active`），特异性升到 (0,4,0)。
+ *   3) ⛔ 绝不给 `.tab / .btn / .badge / .page-header` 写**裸**规则 —— 这些类被
+ *      /alerts、/machines、/resources 等原生页共用，裸规则会反向污染它们（已有先例：
+ *      col-time 被 Machines 与 Alerts 共用）。必须带上面 (1) 的三页前缀。
+ *
+ * ⛔ 顺带修掉平台一个真实缺陷（全量静态审计确认）：
+ *    `--surface-secondary` 在 index CSS 里**从未定义**，但本项目多处引用它 ⇒
+ *    部署指南 `.code-block` / `.step.one-click`、报表 `.sc-radio-group` / `.sc-dialog-sidebar`
+ *    的底色**一直是透明的**（表现为「代码块没有底」「一键卡片没有底」）。
+ *    这里在三页作用域内补齐该 token（不动全局，避免影响其它页）。
+ *
+ * 设计基准 = 设备管理卡片视图（MC-MACH-VIEW）：左侧 3px 色条、radius-lg、shadow、hover 抬升；
+ * 颜色一律复用全局 oklch token（--accent/--success/--warning/--text-*），不另起色彩体系。
+ * 画布色已确认 = `.app-shell{background:var(--surface-root)}` = neutral-50(#f6f9fb)，
+ * 故卡片一律用 --surface-raised(白) + 阴影在灰底上分离，**不改页面底色**。
+ * ══════════════════════════════════════════════════════════════════════════════ */
+
+/* ── 0. 作用域 + 局部 token ─────────────────────────────────────────────────── */
+.main-area :is(.ai-page,.reports-page,.deploy-guide){
+  /* 补齐平台缺失 token（浅色）：介于 neutral-50 与 neutral-100 之间 */
+  --surface-secondary:oklch(96.5% .006 240);
+  --mc3-line:var(--border-subtle,oklch(85% .008 240));
+  --mc3-line2:var(--border-default,oklch(80% .01 240));
+  --mc3-card:var(--surface-raised,#fff);
+  --mc3-shadow:0 1px 2px oklch(0% 0 0/.04),0 6px 16px -8px oklch(0% 0 0/.1);
+  --mc3-shadow-hi:0 2px 4px oklch(0% 0 0/.05),0 14px 30px -10px oklch(0% 0 0/.16);
+  --mc3-ease:var(--ease-out-expo,cubic-bezier(.16,1,.3,1));
+  --mc3-dur:var(--duration-normal,.2s);
+  /* 空态图标：inline SVG 做 background-image。颜色必须写死（data URI 里 currentColor 无效），
+     取 --accent 的精确 sRGB 值 #006374（由 oklch(45% .1 210) 换算得出，非目测）。 */
+  --mc3-ico-empty:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23006374' stroke-width='1.7' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='3' y='3' width='18' height='18' rx='3'/%3E%3Cpath d='M8 16v-5M12 16V8M16 16v-3'/%3E%3C/svg%3E");
+  /* ⚠ 「当文字/描边用」的 accent 必须与「当填充用」的 accent 分开：
+     平台 dark 主题把 --success/--warning/--danger 都提升成 -400 亮阶，**唯独 --accent 仍是 --blue-700**
+     （oklch(45% .1 210) 深青）⇒ 直接当文字色落在近黑底上对比度不足。
+     这里沿用平台既有规律，dark 下换成 --blue-400。填充类（按钮底/选中底）=var(--accent) 不受影响。 */
+  --mc3-accent-text:var(--accent);
+}
+/* 深色模式：抬高阴影（原生 --shadow-card 在 dark 下是 none）、补深色底色与浅色图标 */
+:root.dark .main-area :is(.ai-page,.reports-page,.deploy-guide),
+:root[data-theme=dark] .main-area :is(.ai-page,.reports-page,.deploy-guide){
+  --surface-secondary:oklch(24% .008 240);
+  --mc3-card:var(--surface-raised,oklch(15% .005 240));
+  --mc3-shadow:0 1px 2px oklch(0% 0 0/.3),0 6px 16px -8px oklch(0% 0 0/.5);
+  --mc3-shadow-hi:0 2px 6px oklch(0% 0 0/.4),0 14px 30px -10px oklch(0% 0 0/.65);
+  --mc3-ico-empty:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%238fd3e6' stroke-width='1.7' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='3' y='3' width='18' height='18' rx='3'/%3E%3Cpath d='M8 16v-5M12 16V8M16 16v-3'/%3E%3C/svg%3E");
+  --mc3-accent-text:var(--blue-400,oklch(65% .14 210));
+}
+
+/* ── 1. 通用：空态从「一行灰字浮在左上」改为「居中虚线面板 + 图标」────────────────
+ * 原生：.empty-big{height:200px} / .empty-main{height:400px}，都只是居中一行灰字，
+ *      在大片留白里显得「页面没做完」。统一改成有边界的空态面板。 */
+.main-area :is(.ai-page,.reports-page,.deploy-guide) :is(.empty-big,.empty-main,.empty-chat){
+  display:flex;flex-direction:column;align-items:center;justify-content:center;
+  gap:var(--space-3,12px);
+  height:auto;min-height:clamp(240px,50vh,440px);
+  margin:0;padding:var(--space-8,32px);
+  border:1px dashed var(--mc3-line2);
+  border-radius:var(--radius-lg,14px);
+  background:
+    radial-gradient(120% 100% at 50% 0%,color-mix(in oklab,var(--mc3-accent-text) 6%,transparent),transparent 62%),
+    var(--mc3-card);
+  color:var(--text-secondary);
+  text-align:center;
+}
+/* 空态图标：圆角方块 + accent 图标（::before 注入，不改 DOM） */
+.main-area :is(.ai-page,.reports-page,.deploy-guide) :is(.empty-big,.empty-main,.empty-chat)::before{
+  content:"";flex:none;
+  width:56px;height:56px;border-radius:var(--radius-md,10px);
+  background:var(--accent-subtle) center/26px 26px no-repeat;
+  background-image:var(--mc3-ico-empty);
+}
+/* 空态主文案：原生 --text-tertiary(#9fa6aa) 太淡、字号偏小 */
+.main-area :is(.ai-page,.reports-page,.deploy-guide) :is(.empty-big,.empty-main,.empty-chat) .empty-icon-text,
+.main-area :is(.ai-page,.reports-page,.deploy-guide) :is(.empty-big,.empty-main,.empty-chat)>p,
+.main-area :is(.ai-page,.reports-page,.deploy-guide) :is(.empty-big,.empty-main,.empty-chat)>span{
+  color:var(--text-secondary);font-size:var(--text-sm);font-weight:var(--weight-medium);line-height:1.6;
+}
+/* 次级说明行（如「或先到设备管理添加设备」） */
+.main-area :is(.ai-page,.reports-page,.deploy-guide) :is(.empty-big,.empty-main,.empty-chat) .empty-hint{
+  color:var(--text-tertiary);font-size:var(--text-xs);margin:0;
+}
+
+/* ══ 2. AI 分析页（/ai-analysis）════════════════════════════════════════════════ */
+
+/* 2.1 设备行：hover/选中态 + 左侧 3px 色条（原生只有纯色底，无方向感） */
+.main-area .ai-page .machine-item{
+  position:relative;padding-left:12px;border-radius:var(--radius-sm);
+  transition:background var(--duration-fast),color var(--duration-fast);
+}
+.main-area .ai-page .machine-item::before{
+  content:"";position:absolute;left:0;top:50%;
+  width:3px;height:24px;border-radius:0 3px 3px 0;background:var(--mc3-accent-text);
+  opacity:0;transform:translateY(-50%) scaleY(.35);
+  transition:opacity var(--mc3-dur),transform var(--mc3-dur) var(--mc3-ease);
+}
+.main-area .ai-page .machine-item:hover{background:var(--surface-default)}
+.main-area .ai-page .machine-item.selected{background:var(--accent-subtle)}
+.main-area .ai-page .machine-item.selected::before{opacity:1;transform:translateY(-50%) scaleY(1)}
+.main-area .ai-page .machine-item.selected .machine-name{font-weight:var(--weight-medium)}
+/* 勾选方块：选中时给一点外发光，提升可辨识度 */
+.main-area .ai-page .machine-check.checked{box-shadow:0 0 0 3px color-mix(in oklab,var(--mc3-accent-text) 20%,transparent)}
+
+/* 2.2 搜索框 / 输入框：统一焦点环（原生只改 border-color，焦点不明显） */
+.main-area .ai-page :is(.search-input,.chat-input,.settings-input,.settings-select){
+  transition:border-color var(--duration-fast),box-shadow var(--duration-fast);
+}
+.main-area .ai-page :is(.search-input,.chat-input,.settings-input,.settings-select):focus{
+  outline:none;border-color:var(--accent);
+  box-shadow:0 0 0 3px var(--accent-glow,oklch(55% .2 210/.35));
+}
+
+/* 2.3 分析类型：4 个选项卡片化 + hover 抬升 + active 发光
+ * 原生 bg=--surface-default 与侧栏白底几乎同色、边框只有 .5px ⇒ 4 个块糊在一起。 */
+.main-area .ai-page .analysis-options{gap:8px}
+.main-area .ai-page .analysis-opt{
+  padding:10px 12px;gap:4px;
+  background:var(--mc3-card);border:1px solid var(--mc3-line);
+  border-radius:var(--radius-md);box-shadow:var(--mc3-shadow);
+  transition:transform var(--mc3-dur) var(--mc3-ease),box-shadow var(--mc3-dur),
+             border-color var(--duration-fast),background var(--duration-fast);
+}
+.main-area .ai-page .analysis-opt:hover{transform:translateY(-1px);box-shadow:var(--mc3-shadow-hi);border-color:var(--accent)}
+.main-area .ai-page .analysis-opt.active{
+  background:var(--accent);color:#fff;border-color:var(--accent);
+  box-shadow:0 4px 14px -2px var(--accent-glow,oklch(55% .2 210/.35));
+}
+.main-area .ai-page .analysis-opt.active .opt-desc{color:oklch(100% 0 0/.8)}
+.main-area .ai-page .opt-label{font-weight:var(--weight-medium)}
+
+/* 2.4 主按钮 + AI 模型配置开关 */
+.main-area .ai-page .btn-primary{
+  background:var(--accent);color:#fff;border-radius:var(--radius-md);
+  font-weight:var(--weight-medium);box-shadow:0 1px 2px oklch(0% 0 0/.1);
+  transition:filter var(--duration-fast),box-shadow var(--duration-fast),transform var(--mc3-dur) var(--mc3-ease);
+}
+.main-area .ai-page .btn-primary:hover:not(:disabled){filter:brightness(1.08);box-shadow:0 4px 12px -2px var(--accent-glow)}
+.main-area .ai-page .btn-primary:disabled{opacity:.45;cursor:not-allowed;box-shadow:none}
+.main-area .ai-page .ai-settings-toggle{
+  padding:9px 12px;border-radius:var(--radius-md);
+  background:var(--surface-default);
+  transition:background var(--duration-fast),color var(--duration-fast);
+}
+.main-area .ai-page .ai-settings-toggle:hover{background:var(--mc3-card);color:var(--text-primary)}
+.main-area .ai-page .provider-card{border-radius:var(--radius-sm);transition:all var(--duration-fast)}
+.main-area .ai-page .provider-card:hover{border-color:var(--accent)}
+.main-area .ai-page .provider-card.active{background:var(--accent-subtle);border-color:var(--accent)}
+
+/* 2.5 结果区：卡片加阴影，头部加分隔线（原生只有 margin，标题与正文糊在一起） */
+.main-area .ai-page .result-block{border:1px solid var(--mc3-line);box-shadow:var(--mc3-shadow)}
+.main-area .ai-page .result-header{padding-bottom:var(--space-3);border-bottom:1px solid var(--mc3-line)}
+.main-area .ai-page .result-source{border-top-style:dashed}
+/* 来源 chip：原生用整块 --accent-subtle(#a2d8e9) 作底，在白卡上偏重 ⇒ 改成淡色 */
+.main-area .ai-page .src-chip{
+  background:color-mix(in oklab,var(--mc3-accent-text) 10%,transparent);
+  border-color:color-mix(in oklab,var(--mc3-accent-text) 24%,transparent);
+  color:var(--mc3-accent-text);
+}
+.main-area .ai-page .md-h5{color:var(--mc3-accent-text)}
+
+/* 2.6 对话：气泡阴影 + 输入区成条 */
+.main-area .ai-page .chat-bubble{border-radius:var(--radius-md);box-shadow:var(--mc3-shadow)}
+.main-area .ai-page .chat-input-row{padding:var(--space-3) var(--space-4);background:var(--mc3-card)}
+
+/* ══ 3. 数据报表页（/reports）═══════════════════════════════════════════════════ */
+
+/* 3.1 周期分段控件：原生 .period-tabs{background:--surface-default(#f6f9fb)} 与画布同色
+ *     ⇒ 分段控件完全隐形（截图里 所有/日报/周报/月报 就是 4 个孤立文字）。
+ *     这里补上底色 + 边框 + 内边距，做出真正的 segmented control。 */
+.main-area .reports-page .period-tabs{
+  padding:3px;gap:2px;border-radius:var(--radius-md);
+  background:var(--surface-secondary);border:1px solid var(--mc3-line);
+}
+.main-area .reports-page .period-tab{
+  padding:5px 16px;border-radius:var(--radius-sm);
+  transition:background var(--duration-fast),color var(--duration-fast),box-shadow var(--duration-fast);
+}
+.main-area .reports-page .period-tab:hover{color:var(--text-primary);background:color-mix(in oklab,var(--text-primary) 6%,transparent)}
+.main-area .reports-page .period-tab.active{
+  background:var(--mc3-card);color:var(--mc3-accent-text);font-weight:var(--weight-semibold);
+  box-shadow:0 1px 2px oklch(0% 0 0/.08),0 0 0 1px color-mix(in oklab,var(--mc3-accent-text) 26%,transparent);
+}
+
+/* 3.2 工具栏：与下方内容之间加一条分隔线，页面层次更清楚（原来全平） */
+.main-area .reports-page .toolbar{padding-bottom:var(--space-4);border-bottom:1px solid var(--mc3-line)}
+
+/* 3.3 左侧历史报告卡片：加阴影 + hover 抬升；active 用「左侧 3px 色条 + 强调边框」
+ *     原生只有 1px 边框 + 变底色，在灰画布上立体感不足。 */
+.main-area .reports-page .report-list{gap:var(--space-3)}
+.main-area .reports-page .report-item{
+  border:1px solid var(--mc3-line);border-radius:var(--radius-md);
+  box-shadow:var(--mc3-shadow);
+  transition:transform var(--mc3-dur) var(--mc3-ease),box-shadow var(--mc3-dur),
+             border-color var(--duration-fast),background var(--duration-fast);
+}
+.main-area .reports-page .report-item:hover{transform:translateY(-1px);box-shadow:var(--mc3-shadow-hi);border-color:var(--mc3-line2)}
+.main-area .reports-page .report-item.active{
+  border-color:var(--accent);background:var(--accent-subtle);
+  box-shadow:inset 3px 0 0 var(--accent),var(--mc3-shadow-hi);
+}
+/* 3.4 时间戳：原生 --text-tertiary(#9fa6aa) + 11px 太淡，且上边距只有 8px
+ *     ⇒ 视觉上「贴着卡片下沿溢出」。改成独立页脚行（分隔线 + 更舒服的间距）。 */
+.main-area .reports-page .report-item-time{
+  margin-top:var(--space-3);padding-top:var(--space-3);
+  border-top:1px solid color-mix(in oklab,var(--mc3-line) 75%,transparent);
+  color:var(--text-secondary);font-size:11.5px;
+}
+.main-area .reports-page .report-item-summary{color:var(--text-secondary)}
+
+/* 3.5 日报/周报/月报徽章：原生只有描边色、无底色 ⇒ 三色区分不明显。
+ *     统一成「淡底 + 同色描边 + 同色字」，与 .sc-badge-* 的色语言一致。 */
+.main-area .reports-page .badge{border-radius:var(--radius-sm);padding:2px 9px;letter-spacing:.02em}
+.main-area .reports-page .badge-daily{
+  background:color-mix(in oklab,var(--mc3-accent-text) 12%,transparent);
+  border-color:color-mix(in oklab,var(--mc3-accent-text) 30%,transparent);color:var(--mc3-accent-text);
+}
+.main-area .reports-page .badge-weekly{
+  background:color-mix(in oklab,var(--success) 14%,transparent);
+  border-color:color-mix(in oklab,var(--success) 32%,transparent);color:var(--success);
+}
+.main-area .reports-page .badge-monthly{
+  background:color-mix(in oklab,var(--warning) 16%,transparent);
+  border-color:color-mix(in oklab,var(--warning) 34%,transparent);color:var(--warning);
+}
+
+/* 3.6 右栏报告卡 / 侧栏提示 */
+.main-area .reports-page .report-card{border:1px solid var(--mc3-line);box-shadow:var(--mc3-shadow)}
+.main-area .reports-page .empty-sidebar{color:var(--text-secondary)}
+
+/* 3.7 定时任务子页（.sc-*）：补齐缺失 token 的底、修深色模式写死的白 */
+.main-area .reports-page .sc-card{
+  background:var(--mc3-card);border:1px solid var(--mc3-line);box-shadow:var(--mc3-shadow);
+}
+.main-area .reports-page .sc-card:hover{border-color:var(--accent)}
+.main-area .reports-page .sc-radio-group{background:var(--surface-secondary);border:1px solid var(--mc3-line)}
+.main-area .reports-page .sc-radio.active{background:var(--mc3-card);color:var(--mc3-accent-text)}
+.main-area .reports-page .sc-dialog-sidebar{background:var(--surface-secondary)}
+.main-area .reports-page .sc-empty{
+  border:1px dashed var(--mc3-line2);border-radius:var(--radius-lg);background:var(--mc3-card);
+}
+.main-area .reports-page .sc-chip.active{background:var(--accent);border-color:var(--accent)}
+
+/* ══ 4. 部署指南页（/deploy-guide）══════════════════════════════════════════════ */
+
+/* 4.1 文档栏宽：原生 max-width:760px ⇒ 1600 宽屏下右侧闲置 ~800px（截图实锤）。
+ *     放宽到 900px：既吃掉大片空白，又保持正文在可读行宽内。 */
+.main-area .deploy-guide{max-width:900px;padding:var(--space-6,24px) var(--space-8,32px) var(--space-10,40px)}
+
+/* 4.2 代码块：原生 background:var(--surface-secondary)【未定义】⇒ 一直是透明，
+ *     表现为「命令行没有底、和正文混在一起」。补成深色代码块（两套主题都用深底）。 */
+.main-area .deploy-guide .code-block{
+  background:oklch(21% .012 240);
+  border:1px solid oklch(28% .012 240);
+  border-radius:var(--radius-md);
+  padding:var(--space-3) var(--space-4);
+  box-shadow:inset 0 1px 0 oklch(100% 0 0/.05);
+  scrollbar-width:thin;
+}
+.main-area .deploy-guide .code-block code{color:oklch(91% .01 240)}
+/* ⚠ 深底上原生 .hl{color:var(--accent)} = #006374 几乎不可读 ⇒ 换成浅青 */
+.main-area .deploy-guide .code-block .hl{color:oklch(80% .11 200);font-weight:var(--weight-semibold)}
+
+/* 4.3 一键安装卡片：原生 background:var(--surface-secondary)【未定义】⇒ 没有底。
+ *     补成「accent 淡染渐变 + accent 描边」的强调卡。 */
+.main-area .deploy-guide .step.one-click{
+  background:linear-gradient(180deg,color-mix(in oklab,var(--accent) 7%,var(--mc3-card)),var(--mc3-card));
+  border:1px solid color-mix(in oklab,var(--accent) 22%,transparent);
+  border-radius:var(--radius-lg);
+  padding:var(--space-4) var(--space-5);
+  box-shadow:var(--mc3-shadow);
+}
+
+/* 4.4 步骤：加一条竖向导引，长文档可扫读性更好（原生各步骤只有 margin 间隔） */
+.main-area .deploy-guide .step:not(.one-click){padding-left:var(--space-4);border-left:2px solid var(--mc3-line)}
+.main-area .deploy-guide .step h4{margin-bottom:var(--space-2)}
+
+/* 4.5 分区：原生 .guide-section 只有上下 16px 留白，段落感弱 ⇒ 相邻分区之间加分隔线 */
+.main-area .deploy-guide .guide-section{padding:var(--space-5) 0 var(--space-6)}
+.main-area .deploy-guide .guide-section + .guide-section{border-top:1px solid var(--mc3-line)}
+
+/* 4.6 顶部方式切换 tab */
+.main-area .deploy-guide .guide-tabs{gap:var(--space-2)}
+.main-area .deploy-guide .guide-tabs button{border-radius:var(--radius-md);transition:all var(--duration-fast)}
+.main-area .deploy-guide .guide-tabs button:hover:not(.active){border-color:var(--accent);color:var(--accent)}
+.main-area .deploy-guide .guide-tabs button.active{
+  box-shadow:0 2px 8px -2px var(--accent-glow,oklch(55% .2 210/.35));
+}
+
+/* 4.7 辅助文字对比度：原生 .sub / .step .note 用 --text-tertiary(#9fa6aa)，在浅底上偏淡 */
+.main-area .deploy-guide .sub{color:var(--text-secondary)}
+.main-area .deploy-guide .step .note{color:var(--text-secondary)}
+
+/* ══ 5. 注入卡片 #mcDeployEntry 的主题对齐（2026-10-09）════════════════════════
+ * 该块建于 2026-09-24，色值写的是 `var(--card-bg,#fff)` / `var(--bg-color,#f8fafc)` /
+ * `var(--border-color,#e5e7eb)` / `var(--primary-color,#3b82f6)` / `var(--text-color,#1f2937)`
+ * —— 这 5 个自定义属性**平台全都不存在**（已全量审计确认），于是 PDF 式地全部落到写死的浅色兜底：
+ *   · 深色模式下整张卡片仍是**白底黑字**（截图实锤，在暗色页面上非常刺眼）；
+ *   · 强调色是外来的蓝 #3b82f6，与平台品牌色（--accent 深青 #006374）不一致。
+ * 本区**只替换颜色、不动结构与间距**，并按该块自身的「样式必须自带」原则把所需 token
+ * 就地定义在 #mcDeployEntry 上（不依赖祖先作用域），使其跟随明/暗主题。
+ * ⚠ 选择器一律加 `.main-area` 前缀（(1,1,0) > 原块 (1,0,0)）：原块与本区**同在 mc-custom.css**，
+ *   特异性相同时只能靠**文件顺序**取胜。显式提高一级 ⇒ 不依赖顺序（与第 1 条铁律同一思路），
+ *   否则将来任何补丁把块追加到本区之后，这里会静默失效。
+ * ⚠ 附带一条**预览/调试陷阱**：mc-custom.css 是**运行时**才被追加进 head 的（实测排在
+ *   index chunk 与 DeployGuide chunk 之后），所以用 page.addStyleTag 做预览时，预览样式会被插到
+ *   **mc-custom.css 之前** ⇒ 任何「同特异性、靠后加载取胜」的改动在预览里必然**假失败**。
+ *   判断预览里某条规则是否生效，必须看它是否**严格**高于目标规则的特异性。 */
+.main-area #mcDeployEntry{
+  --mc3-accent-text:var(--accent);
+  background:var(--surface-raised,#fff);
+  border-color:var(--border-subtle,#c9ced2);
+  box-shadow:var(--mc3-shadow,0 1px 2px oklch(0% 0 0/.04),0 6px 16px -8px oklch(0% 0 0/.1));
+}
+:root.dark .main-area #mcDeployEntry,
+:root[data-theme=dark] .main-area #mcDeployEntry{--mc3-accent-text:var(--blue-400,oklch(65% .14 210))}
+
+/* 标题/正文文字 → 平台语义色 */
+.main-area #mcDeployEntry .mdg-t,
+.main-area #mcDeployEntry .mdg-card-h{color:var(--text-primary)}
+.main-area #mcDeployEntry .mdg-d{color:var(--text-secondary)}
+/* ⚠ 注释行不能用 --text-tertiary：dark 下它 = neutral-600 ≈ oklch(38%)，比卡片底(15%)还暗 ⇒ 读不清 */
+.main-area #mcDeployEntry .mdg-note{color:var(--text-secondary)}
+/* 卡片：底色/描边/左侧色条。
+ * ⚠ 层级方向：浅色下容器是 raised(#fff)、内层用 default(neutral-50 浅灰)=「下沉」；
+ *   深色下 raised=neutral-850(15%) 已比 default=neutral-900(12%) 亮 ⇒ 内层若仍用 default
+ *   会变成「内层比外层更暗」，所以深色下改用 overlay(neutral-800) 保持「内层更亮」。 */
+.main-area #mcDeployEntry .mdg-card{background:var(--surface-default);border-color:var(--border-subtle)}
+:root.dark .main-area #mcDeployEntry .mdg-card,
+:root[data-theme=dark] .main-area #mcDeployEntry .mdg-card{background:var(--surface-overlay)}
+.main-area #mcDeployEntry .mdg-card::before{background:var(--accent)}
+.main-area #mcDeployEntry .mdg-dot{background:var(--accent)}
+/* 序号块：原本是「实心亮蓝/亮琥珀 + 白字」，对比度仅 ~2.2:1 ⇒ 改成淡底同色字（两套主题都稳） */
+.main-area #mcDeployEntry .mdg-num{
+  background:color-mix(in oklab,var(--mc3-accent-text) 14%,transparent);
+  color:var(--mc3-accent-text);
+}
+.main-area #mcDeployEntry .mdg-card-hl::before{background:var(--warning)}
+.main-area #mcDeployEntry .mdg-card-hl .mdg-num{
+  background:color-mix(in oklab,var(--warning) 16%,transparent);color:var(--warning);
+}
+/* 入口地址 chip：换成等宽字体 + 品牌色，且随主题切换 */
+.main-area #mcDeployEntry .mdg-origin{
+  font-family:var(--font-mono,ui-monospace,Menlo,Consolas,monospace);
+  background:color-mix(in oklab,var(--mc3-accent-text) 12%,transparent);
+  color:var(--mc3-accent-text);
+}
+/* 内网/公网标签 */
+.main-area #mcDeployEntry .mdg-tag.is-lan{
+  background:color-mix(in oklab,var(--success) 12%,transparent);
+  color:var(--success);border-color:color-mix(in oklab,var(--success) 26%,transparent);
+}
+.main-area #mcDeployEntry .mdg-tag.is-wan{
+  background:color-mix(in oklab,var(--warning) 14%,transparent);
+  color:var(--warning);border-color:color-mix(in oklab,var(--warning) 30%,transparent);
+}
+/* 代码块：与原生 .code-block 统一成同一种深色 */
+.main-area #mcDeployEntry .mdg-code{background:oklch(21% .012 240);color:oklch(91% .01 240)}
+/* 行内 code 反色 */
+.main-area #mcDeployEntry .mdg-d code,
+.main-area #mcDeployEntry .mdg-note code,
+.main-area #mcDeployEntry .mdg-warn code{
+  background:color-mix(in oklab,var(--text-primary) 9%,transparent);color:var(--text-primary);
+}
+/* 风险提示条 */
+.main-area #mcDeployEntry .mdg-warn{
+  background:color-mix(in oklab,var(--danger) 10%,transparent);
+  border-color:color-mix(in oklab,var(--danger) 26%,transparent);
+  color:var(--danger);
+}

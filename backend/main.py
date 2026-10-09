@@ -772,6 +772,33 @@ async def install_agent_script(request: Request):
     return PlainTextResponse(script, media_type="text/plain; charset=utf-8")
 
 
+@app.get("/api/install-full-agent.sh")
+async def install_full_agent_script(request: Request):
+    """动态生成【完整版】Agent 安装脚本：全量指标（含 进程 TOP5），跨网段可用。
+
+    与 /api/install-agent.sh 的区别：后者内置的是 8 字段轻量 agent，
+    本接口内置的是 collector/agent.py 完整版（38 个直接字段 + 14 组扩展）。
+
+    跨网段为什么可行：完整 agent 的 run() 只要环境变量 MACHINE_ID 存在，
+    就直接使用该 ID 并**完全跳过内置 register()**（register 打的 /api/machines/
+    需要鉴权，实测 401）；真正上报走 /api/metrics/report，免鉴权（实测 200）。
+
+    目标机执行（<设备ID> 需先在平台「设备管理」中已存在）：
+        curl -s http://<平台入口>/api/install-full-agent.sh | bash -s <设备ID>
+    """
+    import os
+    script_path = os.path.join(os.path.dirname(__file__), "data", "install_full_agent.sh")
+    try:
+        with open(script_path, "r", encoding="utf-8") as f:
+            template = f.read()
+    except FileNotFoundError:
+        return PlainTextResponse("# install_full_agent.sh not found on server", status_code=404)
+
+    base = f"{request.url.scheme}://{request.url.netloc}"
+    script = template.replace("__BK__", base)
+    return PlainTextResponse(script, media_type="text/plain; charset=utf-8")
+
+
 @app.get("/api/install-node-exporter.sh")
 async def install_node_exporter_script(request: Request):
     """动态生成 node_exporter 安装脚本：平台地址由请求 URL 推导，不再写死 IP。

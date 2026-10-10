@@ -2300,6 +2300,122 @@
     });
   }
 
+  /* ══ TABMERGE（2026-10-10）══════════════════════════════════════════════
+   * 需求：原生三个 tab（Python Agent / Node Exporter / SNMP）下方的部署文档
+   *   要**整合进 #mcDeployEntry**（格式同现有卡片），且原生「部署指南 + 副标题
+   *   + 三个 tab」不再展示。
+   * ⛔⛔ 关键事实（实测）：三 tab **共用同一个 `section.guide-section`**，
+   *   点 tab 只是替换它的内容 ⇒ CSS 绝无可能让三者并存，**必须克隆渲染结果**。
+   * 做法：首访时依次 `.guide-tabs button[i].click()` → 等 Vue 渲染 → 克隆
+   *   `section.guide-section.innerHTML` 缓存进 CAP；随后按卡④/⑤/⑥渲染。
+   *   克隆体内的编译期硬编码地址（`http://192.168.1.66:8000` 等）在我们**自己的
+   *   副本**里就地校正为当前内网入口 —— 原生 DOM 一个字都不动。
+   * 降级：CAP 拿不到时静默放弃（原生 section + tab 全部照常显示，绝不留死页）。
+   * ⚠ 捕获期间 `_capBusy=true`，run() 直接 return：避免与 Vue 抢改 DOM 造成抖动。
+   * ⚠ 还原：捕获完把用户原本停留的 tab 点回去（此时多已隐藏，纯保险）。
+   * ══════════════════════════════════════════════════════════════════════ */
+  var CAP = null;        // [html0, html1, html2]；null = 尚未捕获
+  var _capBusy = false;  // 捕获中
+  var _capT0 = 0;        // 进入本页的时间戳（0=不在本页）；超过 CAP_WAIT 就放弃
+  var CAP_WAIT = 20000;  // 捕获窗口：原生 section / tab 迟迟不出现则静默降级
+
+  var TAB_META = [
+    { n: '4', t: 'Python Agent 方式', b: '推模型 · 完整步骤' },
+    { n: '5', t: 'Node Exporter 方式', b: '拉模型 · 完整步骤' },
+    { n: '6', t: 'SNMP 方式', b: '交换机 / 路由器 / BMC' }
+  ];
+
+  // 克隆体内写死地址 → 当前内网入口（去裸端口 :8000）
+  function normAddr(html, lan) {
+    var h = String(lan).replace(/^https?:\/\//i, '');
+    var hostOnly = h.split('/')[0].split(':')[0];
+    return String(html)
+      .replace(/https?:\/\/192\.168\.1\.66:8000/g, String(lan))
+      .replace(/https?:\/\/192\.168\.1\.66/g, String(lan))
+      .replace(/192\.168\.1\.66/g, hostOnly);
+  }
+
+  // 摘掉克隆体首个标题（标题由卡片头承担，避免重复）
+  function stripLeadHeading(html) {
+    var box = document.createElement('div');
+    box.innerHTML = String(html || '');
+    var hs = box.querySelectorAll('h1,h2,h3,h4,h5,h6');
+    if (hs.length) {
+      var h = hs[0];
+      if ((h.textContent || '').trim().length <= 40 && h.parentNode) h.parentNode.removeChild(h);
+    }
+    return box.innerHTML;
+  }
+
+  function startCapture() {
+    var root = document.querySelector(ROOT_SEL);
+    if (!root) return;
+    var sec = root.querySelector('section.guide-section');
+    var btns = root.querySelectorAll('.guide-tabs button');
+    if (!sec || !btns.length) return;   // 原生页还没渲染好，交给 1.5s 巡检重试
+    _capBusy = true;
+    var from = 0;
+    for (var k = 0; k < btns.length; k++) if (/active/.test(btns[k].className)) { from = k; break; }
+    var out = [], i = 0;
+    function next() {
+      if (i >= btns.length) {
+        _capBusy = false;
+        CAP = out;
+        try {
+          var b0 = root.querySelectorAll('.guide-tabs button')[from];
+          if (b0) b0.click();
+        } catch (e) {}
+        schedule();
+        return;
+      }
+      var b = root.querySelectorAll('.guide-tabs button')[i];
+      if (!b) { i++; next(); return; }
+      try { b.click(); } catch (e) {}
+      setTimeout(function () {
+        // ⚠ 每次都要重新 query：Vue 会重建这个 section 节点
+        var s = root.querySelector('section.guide-section');
+        out[i] = s ? s.innerHTML : '';
+        i++;
+        next();
+      }, 120);
+    }
+    next();
+  }
+
+  // 卡④/⑤/⑥：整合进来的原生文档
+  function buildNativeCards() {
+    if (!CAP) {
+      return '<p class="mdg-sec">平台原生安装文档（三种方式完整步骤）</p>'
+        + '<div class="mdg-grid"><div class="mdg-card mdg-card-native">'
+        + '<p class="mdg-d">正在读取原生文档…</p></div></div>';
+    }
+    var o = String(location.origin || '').replace(/\/+$/, '');
+    var lan = isPrivate(o) ? o : LAN_ORIGIN;
+    var out = '<p class="mdg-sec">平台原生安装文档（已整合 · 地址按当前入口校正）</p><div class="mdg-grid">';
+    for (var i = 0; i < CAP.length; i++) {
+      var m = TAB_META[i] || { n: '·', t: '方式 ' + (i + 1), b: '' };
+      var body = stripLeadHeading(normAddr(CAP[i] || '', lan));
+      if (!body) continue;
+      out += '<div class="mdg-card mdg-card-native">'
+        + '<div class="mdg-card-h"><span class="mdg-num">' + esc(m.n) + '</span>' + esc(m.t)
+        + (m.b ? '<span class="mdg-badge">' + esc(m.b) + '</span>' : '') + '</div>'
+        + '<div class="mdg-native">' + body + '</div>'
+        + '</div>';
+    }
+    out += '</div>';
+    return out;
+  }
+
+  // 页面级开关：接管本页后隐藏原生标题；克隆成功后连 tab + section 一起隐藏
+  function markRoot(on, ok) {
+    var de = document.documentElement;
+    if (!de) return;
+    if (on) { if (de.getAttribute('data-mc-dg') !== '1') de.setAttribute('data-mc-dg', '1'); }
+    else if (de.hasAttribute('data-mc-dg')) de.removeAttribute('data-mc-dg');
+    if (ok) { if (de.getAttribute('data-mc-dg-ok') !== '1') de.setAttribute('data-mc-dg-ok', '1'); }
+    else if (de.hasAttribute('data-mc-dg-ok')) de.removeAttribute('data-mc-dg-ok');
+  }
+
   // 当前入口是否内网地址（决定「内网/公网入口」标签 + 是否提示内网回流限制）
   // ⚠ 判据必须覆盖三类内网写法：私有 IP 段 / localhost / **无点主机名**（如 ucap-monitor）。
   //   E2E 抓到过两个假阴性：① 私有段末尾多加 (:|/|$) 边界 → 192.168.1.66 判不出来；
@@ -2314,11 +2430,26 @@
     return false;
   }
 
+  // ⚠ 平台有两个入口，两条命令**必须分别用对的入口**，不能都跟着 location.origin 走：
+  //   ① 内网入口  192.168.1.66     —— install-node-exporter.sh（拉模型，需目标 9100 可达）
+  //   ② 公网入口  117.134.9.72:8166 —— install-agent.sh（推模型，跨网段唯一可行）
+  // 原因：脚本会把「**你拉取时用的地址**」写进 agent 的 BACKEND_URL。
+  //   跨网段机器若用内网地址拉取 ⇒ agent 往一个它够不到的地址上报 ⇒ 永远采不到数据。
+  //   （旧版把两条命令都绑 location.origin：管理员在内网打开页面时，
+  //    第 ② 条会显示 192.168.1.66 —— 恰恰是它要解决的那个失败场景。）
+  var LAN_ORIGIN = 'http://192.168.1.66';
+  var WAN_ORIGIN = 'http://117.134.9.72:8166';
+
   function buildHTML() {
     var o = String(location.origin || '').replace(/\/+$/, '');
     var priv = isPrivate(o);
-    var neCmd = 'curl -sL ' + o + '/api/install-node-exporter.sh -o /tmp/install_ne.sh\nbash /tmp/install_ne.sh';
-    var agCmd = 'curl -s ' + o + '/api/install-agent.sh | bash -s <设备ID>';
+    // ① 内网 / 路由可达：优先用当前入口（可能是内网 IP 或内网主机名），否则退回内网常量
+    var lan = priv ? o : LAN_ORIGIN;
+    // ② 跨网段 / 公网：**恒定用公网入口**
+    var wan = WAN_ORIGIN;
+    var neCmd = 'curl -sL ' + lan + '/api/install-node-exporter.sh -o /tmp/install_ne.sh\nbash /tmp/install_ne.sh';
+    var agFullCmd = 'curl -s ' + wan + '/api/install-full-agent.sh | bash -s <设备ID>';
+    var agLiteCmd = 'curl -s ' + wan + '/api/install-agent.sh | bash -s <设备ID>';
     return ''
       + '<div class="mdg-head">'
       +   '<span class="mdg-dot"></span>'
@@ -2326,28 +2457,51 @@
       +   '<code class="mdg-origin">' + esc(o) + '</code>'
       +   '<span class="mdg-tag ' + (priv ? 'is-lan' : 'is-wan') + '">' + (priv ? '内网入口' : '公网入口') + '</span>'
       + '</div>'
+      + '<p class="mdg-lead"><b>怎么选：</b>看机器能不能被平台<b>直连</b> —— '
+      +   '能直连（同网段 / 路由可达且网段不重叠）→ 用 <b>node_exporter</b>（平台主动拉）；'
+      +   '连不到（跨网段 / 公网 / 两边都是 <code>192.168.1.0/24</code> 重叠）→ 用 <b>完整版 agent</b>（机器主动推）。</p>'
+      + '<table class="mdg-cmp">'
+      +   '<thead><tr><th>对比</th><th>node_exporter（拉模型）</th><th>完整 agent（推模型）</th></tr></thead>'
+      +   '<tbody>'
+      +     '<tr><td>数据方向</td><td>平台 → 机器 <code>:9100</code></td><td>机器 → 平台 <code>/api/metrics/report</code></td></tr>'
+      +     '<tr><td>网络要求</td><td>IP 可达（同网段，或路由可达且<b>不重叠</b>）</td><td>机器<b>能往外发</b>即可，无需被平台访问</td></tr>'
+      +     '<tr><td>跨网段</td><td class="no">❌ 不可行</td><td class="yes">✅ 可行</td></tr>'
+      +     '<tr><td>网段重叠</td><td class="no">❌ 无解</td><td class="yes">✅ 可行</td></tr>'
+      +     '<tr><td>指标完整度</td><td>齐全（进程 TOP5 受采集器限制）</td><td>齐全（53 字段，含进程 TOP5）</td></tr>'
+      +     '<tr><td>适用</td><td><b>本网段首选</b></td><td><b>跨网段必选</b></td></tr>'
+      +   '</tbody>'
+      + '</table>'
       + '<div class="mdg-grid">'
       +   '<div class="mdg-card">'
-      +     '<div class="mdg-card-h"><span class="mdg-num">1</span>内网 / 路由可达的机器</div>'
-      +     '<p class="mdg-d">平台<b>主动拉取</b> <code>目标IP:9100</code>：适用于同一网段，或路由可达且<b>不重叠</b>的网段。</p>'
+      +     '<div class="mdg-card-h"><span class="mdg-num">1</span>本网段 / 路由可达<span class="mdg-badge">推荐 node_exporter</span></div>'
+      +     '<p class="mdg-d">平台<b>主动拉取</b> <code>目标IP:9100</code>。零常驻上报、无额外依赖。</p>'
       +     '<pre class="mdg-code"><code>' + esc(neCmd) + '</code></pre>'
       +     '<p class="mdg-note">脚本内的平台地址会按「你拉取时用的地址」自动填入（含端口），<b>无需再改代码</b>。</p>'
       +   '</div>'
       +   '<div class="mdg-card mdg-card-hl">'
-      +     '<div class="mdg-card-h"><span class="mdg-num">2</span>跨网段 / 公网机器（含网段重叠）</div>'
+      +     '<div class="mdg-card-h"><span class="mdg-num">2</span>跨网段 / 公网 / 网段重叠<span class="mdg-badge is-hl">推荐 完整 agent</span></div>'
       +     '<p class="mdg-d">平台<b>连不到</b>目标机 9100 —— 若两边都用 <code>192.168.1.0/24</code>，内核只发 ARP、不走网关，<b>映射公网也没用</b>。必须由目标机<b>主动上报</b>。</p>'
-      +     '<pre class="mdg-code"><code>' + esc(agCmd) + '</code></pre>'
-      +     '<p class="mdg-note">设备 ID 在「设备管理」添加后获取；上报走 <code>POST /api/metrics/report</code>，在线状态由上报驱动。</p>'
+      +     '<pre class="mdg-code"><code>' + esc(agFullCmd) + '</code></pre>'
+      +     '<p class="mdg-note">⛔ <b>只能用公网入口</b> <code>' + esc(wan) + '</code> 拉取：脚本会把「拉取时用的地址」写进 agent 的 <code>BACKEND_URL</code>，用内网地址拉会让跨网段机器<b>上报不到</b>。设备 ID 在「设备管理」添加后获取；上报走 <code>POST /api/metrics/report</code>，在线状态由上报驱动。</p>'
+      +   '</div>'
+      +   '<div class="mdg-card is-opt">'
+      +     '<div class="mdg-card-h"><span class="mdg-num">3</span>可选：只需要 CPU / 内存 / 磁盘百分比</div>'
+      +     '<p class="mdg-d">轻量 agent，只上报 <b>8 个指标</b>（3 个百分比 + 网络 + 3 个负载）。</p>'
+      +     '<pre class="mdg-code"><code>' + esc(agLiteCmd) + '</code></pre>'
+      +     '<p class="mdg-note">⚠ 轻量版<b>不含</b> CPU 核数 / 总内存 / 总容量 / 进程数 / 运行时长 ⇒ 机器详情页「系统状态」那几格会显示 <code>-</code>。想要完整卡片，请用上面的<b>完整版</b>。</p>'
       +   '</div>'
       + '</div>'
+      + buildNativeCards()
+      + '<p class="mdg-foot">📄 上面三张卡片是<b>平台推荐的接入方式</b>（按当前入口自适应）；再往下是平台<b>原生安装文档</b>的完整步骤（原在这页的三个 tab 里，现已整合，写死的 <code>:8000</code> 裸端口地址也已按当前入口校正）。<b>跨网段安装请一律用上面的公网入口</b>。<br>🧩 <b>完整版 Agent 首次启动</b>会额外把机器的<b>固定属性</b>（CPU 核数 / 内存·磁盘·交换区总容量 / 网卡速率 / 句柄上限）随首次上报传回，详情页「系统状态 / 磁盘与 IO」里的<b>总容量</b>等即使一时拿不到实时数据也有值；<b>换硬件 / 扩盘后</b>在目标机重跑一次本页脚本即可刷新（幂等，只覆盖有值的项）。</p>'
       + (priv ? '' :
-          '<p class="mdg-warn">⛔ 目标机若在<b>内网</b>，请改用内网地址 <code>http://192.168.1.66/...</code> 拉取脚本 —— 防火墙不支持内网回流，内网机器访问上面的公网地址会不通。</p>');
+          '<p class="mdg-warn">⛔ 目标机若在<b>内网</b>，第 1 步请改用内网入口 <code>' + esc(LAN_ORIGIN) + '/...</code> 拉取脚本 —— 防火墙不支持内网回流，内网机器访问公网入口会不通。</p>');
   }
 
   function run() {
-    if (location.pathname !== PAGE) return;
+    if (location.pathname !== PAGE) { _capT0 = 0; markRoot(false, false); return; }
     var root = document.querySelector(ROOT_SEL);
-    if (!root) return;
+    if (!root) { markRoot(false, false); return; }
+    if (!_capT0) _capT0 = Date.now();
     var host = document.getElementById(HOST_ID);
     if (!host) {
       host = document.createElement('div');
@@ -2356,17 +2510,23 @@
       if (anchor && anchor.parentNode) anchor.parentNode.insertBefore(host, anchor.nextSibling);
       else root.appendChild(host);
     }
+    markRoot(true, !!CAP);
+    if (_capBusy) return;   // 捕获三 tab 期间不抢改 DOM
     var html = buildHTML();
     if (host.getAttribute('data-mc-sig') !== html) {
       host.setAttribute('data-mc-sig', html);
       host.innerHTML = html;
     }
+    if (!CAP && !_capBusy && (Date.now() - _capT0) < CAP_WAIT) startCapture();
   }
 
   function needsWork() {
     if (location.pathname !== PAGE) return false;
     if (!document.querySelector(ROOT_SEL)) return false;
-    return !document.getElementById(HOST_ID);
+    if (_capBusy) return false;
+    if (!document.getElementById(HOST_ID)) return true;
+    if (!CAP && (Date.now() - _capT0) < CAP_WAIT) return true;
+    return false;
   }
 
   var _t = null;

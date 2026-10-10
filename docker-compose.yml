@@ -151,25 +151,38 @@ services:
       start_period: 20s
 
   # ============ 采集 Agent ============
-  collector:
-    build:
-      context: ./collector
-      dockerfile: Dockerfile
-    container_name: monitor-collector
-    mem_limit: 128m
-    cpus: "0.5"
-    restart: always
-    network_mode: host
-    pid: host
-    privileged: true
-    environment:
-      BACKEND_URL: http://localhost:8000
-      COLLECT_INTERVAL: 10
-    volumes:
-      - /proc:/host/proc:ro
-      - /sys:/host/sys:ro
-    depends_on:
-      - backend
+  # ⛔⛔ DUPDIAG-20261010：本服务**已停用**，禁止再次启用。
+  # 原因：它内部跑的是 Jun 2 的旧版 agent.py（9d06e26085，34 KB），且**没有设 MACHINE_ID**。
+  #   → agent 启动时走 register()：POST /api/machines/ 因名/IP 已存在返回 422（日志刷屏），
+  #     随后兜底分支按「本机 IP 192.168.1.66」查到已存在的机器，**复用 id=20** 开始上报。
+  #   → 于是与宿主的 systemd 服务 monitor-agent.service（新版完整版 agent.py，
+  #     MACHINE_ID=20，COLLECT_INTERVAL=15）**抢写同一个 machine_id=20**。
+  #   → query_latest 用 last() 取最近一条 ⇒ 谁后写谁赢 ⇒ 详情页「磁盘与 IO · 总容量」
+  #     在 97.87 GB（宿主 /dev/sda1 真值）与 105.1 GB（容器 overlay 视角）之间每 10~15s 跳变，
+  #     memory_total_gb 在 7.52 / 8.07 之间跳，process_count 在 180 / 0 之间跳。
+  # 替代关系：宿主 monitor-agent.service 已完整承担本机采集（53 字段全，含进程 TOP5），
+  #   本服务功能与之 100% 重复，且数据口径还是「容器视角」的错值 ⇒ 无保留价值。
+  # 回滚：如需恢复，备份在 /root/dupdiag-20261010/docker-compose.yml.bak，
+  #   并需同时给 collector 补一个不冲突的 MACHINE_ID（或改 agent 支持「空/0 即不注册不上报」）。
+  # collector:
+  #   build:
+  #     context: ./collector
+  #     dockerfile: Dockerfile
+  #   container_name: monitor-collector
+  #   mem_limit: 128m
+  #   cpus: "0.5"
+  #   restart: always
+  #   network_mode: host
+  #   pid: host
+  #   privileged: true
+  #   environment:
+  #     BACKEND_URL: http://localhost:8000
+  #     COLLECT_INTERVAL: 10
+  #   volumes:
+  #     - /proc:/host/proc:ro
+  #     - /sys:/host/sys:ro
+  #   depends_on:
+  #     - backend
 
 volumes:
   mysql_data:

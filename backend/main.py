@@ -307,6 +307,16 @@ async def node_exporter_collector():
                     MachineInfo.monitor_enabled == True,
                     MachineInfo.device_type.notin_(["snmp", "pve"])
                 ).all()
+                # ⛔⛔ DUPDIAG-20261010：跳过「已有完整版 Agent 在推」的机器。
+                # 背景：pull(node_scraper 拉 :9100) 与 push(agent 打 /api/metrics/report)
+                #   是两套独立采集器。若某台机器**同时**具备这两条路（例如宿主自己既跑了
+                #   node_exporter:9100、又跑了完整版 agent），二者会**抢写同一个 machine_id**，
+                #   而 query_latest 用 last() 取最近一条 ⇒ 详情页固定属性在两个值之间每 10~15s
+                #   跳变（实测 id=20：disk_total_gb 在 97.87(GiB,agent) 与 105.1(GB,node_scraper)
+                #   之间交替，根因是 /1024³ 与 /1e9 两套单位口径）。
+                # 判据：`hw_collected_at` 非空 ⇒ 该机跑的是完整版 agent（HWSTATIC 首轮回传固定
+                #   属性），它的字段更全（53 项含进程 TOP5），应独占该 machine_id，pull 不再插手。
+                machines = [m for m in machines if not getattr(m, "hw_collected_at", None)]
                 if machines:
                     tasks = [asyncio.to_thread(scrape_node, m.ip, 9100, timeout) for m in machines]
                     results = await asyncio.gather(*tasks, return_exceptions=True)

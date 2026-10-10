@@ -982,3 +982,111 @@ html.light .mdc-panel .mdc-kpi {
   border-color:color-mix(in oklab,var(--danger) 26%,transparent);
   color:var(--danger);
 }
+
+/* ── 2026-10-10 WANFIX：部署指南「接入方式选择」区块重构新增件 ──
+ * 目标：一眼分清「拉模型(node_exporter) 用于本网段 / 推模型(完整 agent) 用于跨网段」。
+ * 全部收窄在 .main-area #mcDeployEntry 下，绝不外泄到原生文档。 */
+
+/* 一句话决策导引 */
+.main-area #mcDeployEntry .mdg-lead{
+  margin:0 0 12px;padding:10px 14px;border-radius:var(--radius-md,10px);
+  background:color-mix(in oklab,var(--mc3-accent-text) 7%,transparent);
+  border:1px solid color-mix(in oklab,var(--mc3-accent-text) 20%,transparent);
+  color:var(--text-secondary);font-size:13px;line-height:1.8;
+}
+.main-area #mcDeployEntry .mdg-lead b{color:var(--mc3-accent-text)}
+
+/* 对比表：拉 vs 推 */
+.main-area #mcDeployEntry .mdg-cmp{
+  width:100%;border-collapse:separate;border-spacing:0;margin:0 0 14px;
+  font-size:12.5px;line-height:1.6;
+  border:1px solid var(--border-subtle);border-radius:var(--radius-md,10px);overflow:hidden;
+}
+.main-area #mcDeployEntry .mdg-cmp th,
+.main-area #mcDeployEntry .mdg-cmp td{
+  padding:8px 12px;text-align:left;vertical-align:top;
+  border-bottom:1px solid var(--border-subtle);
+}
+.main-area #mcDeployEntry .mdg-cmp thead th{
+  background:var(--surface-default);color:var(--text-primary);font-weight:600;white-space:nowrap;
+}
+:root.dark .main-area #mcDeployEntry .mdg-cmp thead th,
+:root[data-theme=dark] .main-area #mcDeployEntry .mdg-cmp thead th{background:var(--surface-overlay)}
+.main-area #mcDeployEntry .mdg-cmp tbody tr:last-child td{border-bottom:0}
+.main-area #mcDeployEntry .mdg-cmp td{color:var(--text-primary)}
+.main-area #mcDeployEntry .mdg-cmp td:first-child{color:var(--text-secondary);white-space:nowrap}
+.main-area #mcDeployEntry .mdg-cmp .yes{color:var(--success);font-weight:600}
+.main-area #mcDeployEntry .mdg-cmp .no{color:var(--danger);font-weight:600}
+
+/* 卡头「推荐」小徽章（推到最右） */
+.main-area #mcDeployEntry .mdg-badge{
+  margin-left:auto;flex:0 0 auto;
+  font-size:11px;font-weight:600;padding:2px 9px;border-radius:999px;white-space:nowrap;
+  background:color-mix(in oklab,var(--mc3-accent-text) 14%,transparent);color:var(--mc3-accent-text);
+}
+.main-area #mcDeployEntry .mdg-badge.is-hl{
+  background:color-mix(in oklab,var(--warning) 16%,transparent);color:var(--warning);
+}
+
+/* 可选卡：整行 + 弱化（灰条、灰序号） */
+.main-area #mcDeployEntry .mdg-card.is-opt{grid-column:1/-1}
+.main-area #mcDeployEntry .mdg-card.is-opt::before{background:var(--border-strong)}
+.main-area #mcDeployEntry .mdg-card.is-opt .mdg-num{
+  background:color-mix(in oklab,var(--text-secondary) 14%,transparent);color:var(--text-secondary);
+}
+
+/* 底部：指向「下方原生文档」的提示条 */
+.main-area #mcDeployEntry .mdg-foot{
+  margin:12px 0 0;padding:9px 12px;border-radius:var(--radius-sm,6px);
+  background:color-mix(in oklab,var(--warning) 9%,transparent);
+  border-left:3px solid var(--warning);
+  color:var(--text-secondary);font-size:12px;line-height:1.7;
+}
+
+/* 三处行内 code 统一反色（含新件） */
+.main-area #mcDeployEntry .mdg-lead code,
+.main-area #mcDeployEntry .mdg-cmp code,
+.main-area #mcDeployEntry .mdg-foot code{
+  background:color-mix(in oklab,var(--text-primary) 9%,transparent);color:var(--text-primary);
+  padding:1px 5px;border-radius:4px;
+  font-family:var(--font-mono,ui-monospace,Menlo,Consolas,monospace);
+}
+
+/* ── 2026-10-10 TABMERGE：把原生三 tab 的部署文档整合进 #mcDeployEntry ──────
+ * 需求：Python Agent / Node Exporter / SNMP 三个 tab 的内容并入卡片，
+ *      原生「部署指南 + 副标题 + 三个 tab」不再展示。
+ * ⛔ 三 tab **共用同一个 section.guide-section**（点 tab 换内容）⇒ CSS 无法并存，
+ *    内容由 mc-custom.js 克隆后渲染成卡④/⑤/⑥。 */
+
+/* ① 隐藏原生标题 + 副标题。
+ *    ⛔ 只隐藏不删除（保 Vue patch 锚点）；用 html[data-mc-dg] 做开关，
+ *       仅当注入脚本确认接管本页才生效 —— 脚本没跑，原生页照旧完整。 */
+html[data-mc-dg] .main-area .deploy-guide > h2,
+html[data-mc-dg] .main-area .deploy-guide > p.sub{display:none!important}
+
+/* ② 三 tab 与原生 section 的隐藏，**只在克隆成功后**才开。
+ *    ⛔ 用 html[data-mc-dg-ok]（JS 捕获成功才置）⇒ 克隆失败时 tab 与 section
+ *       照常可用，不会出现「有内容没导航」的死页。 */
+html[data-mc-dg-ok] .main-area .deploy-guide > .guide-tabs,
+html[data-mc-dg-ok] .main-area .deploy-guide > section.guide-section{display:none!important}
+
+/* ③ 整合进来的原生文档卡：整行宽 + 与卡头虚线分隔 */
+.main-area #mcDeployEntry .mdg-card-native{grid-column:1/-1}
+.main-area #mcDeployEntry .mdg-native{
+  margin-top:10px;padding-top:12px;
+  border-top:1px dashed var(--border-subtle);
+}
+/* 克隆体内首个小标题已由卡头承担（JS 会摘掉；此处兜底直接子节点） */
+.main-area #mcDeployEntry .mdg-native > h1,
+.main-area #mcDeployEntry .mdg-native > h2,
+.main-area #mcDeployEntry .mdg-native > h3{display:none}
+
+/* ④ 「原生文档」分隔小标题 */
+.main-area #mcDeployEntry .mdg-sec{
+  display:flex;align-items:center;gap:10px;
+  margin:16px 0 10px;font-size:12.5px;font-weight:600;
+  color:var(--text-secondary);letter-spacing:.02em;
+}
+.main-area #mcDeployEntry .mdg-sec::after{
+  content:"";flex:1 1 auto;height:1px;background:var(--border-subtle);
+}

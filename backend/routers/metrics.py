@@ -37,6 +37,66 @@ logger = logging.getLogger("metrics")
 router = APIRouter(prefix="/api/metrics", tags=["监控数据"], )
 
 
+# ══ HWSTATIC-20261010：机器「固定属性」快照 ══════════════════════════════════
+# 详情页下方卡片里这些字段对一台机器是**恒定的**（不随时间变化），但它们的可获取性
+# 取决于「有没有采集器在持续上报」：拉模型（宿主机 API / node_exporter）拿不到绝对值，
+# 跨网段/离线机器也可能长期拿不到 ⇒ 详情页只能显示 `-`。
+# 方案：agent 在**首次识别**时（其实每轮都带，首次即落库）上报 → 落 MySQL machine_info；
+# 详情页 /latest 在实时数据缺失时回填。重新运行一次安装脚本即可刷新。
+#   (machine_info 列, MetricData/InfluxDB 字段名, 类型)
+# ⚠ `cpu_freq_mhz` **不**在快照集合里：agent 取的是 `scaling_cur_freq`（当前频率，随负载
+#   变化），不是固定属性，快照下来反而误导。
+_HW_FIELDS = [
+    ("hw_cpu_cores", "cpu_cores", int),
+    ("hw_memory_total_gb", "memory_total", float),
+    ("hw_disk_total_gb", "disk_total", float),
+    ("hw_swap_total_gb", "swap_total", float),
+    ("hw_net_link_speed", "net_link_speed", int),
+    ("hw_file_handles_max", "file_handles_max", int),
+]
+# /api/metrics/latest 回填用：machine_info 列 -> 返回体字段名（详情页读的名字）
+_HW_FALLBACK = [
+    ("hw_cpu_cores", "cpu_cores"),
+    ("hw_memory_total_gb", "memory_total_gb"),
+    ("hw_disk_total_gb", "disk_total_gb"),
+    ("hw_swap_total_gb", "swap_total_gb"),
+    ("hw_net_link_speed", "net_link_speed"),
+    ("hw_file_handles_max", "file_handles_max"),
+]
+
+
+def _save_hw_static(machine, payload: dict) -> bool:
+    """把「固定属性」写入 machine_info（HWSTATIC）。
+
+    ⛔ 只在值 **有效且 > 0** 时覆盖 —— 一次采集失败产生的 0 绝不能覆盖已有真实值。
+    返回值 = 本次是否有**至少一项有效值**被读到，用于刷新 hw_collected_at。
+
+    语义（重要）：hw_collected_at = **最近一次成功读取到固定属性的时间**，
+    不是「值发生变化的时间」。理由：
+      · 重跑安装脚本 / 常规上报（每 15s）都会重新读一次值 ⇒ 时间戳应跟着走，
+        运维才知道「页面上这个总容量是多少秒之前测到的」；
+      · 若只在值变化时刷新，重跑脚本后时间戳纹丝不动，运维会误以为脚本没生效。
+    """
+    touched = False
+    for col, src, cast in _HW_FIELDS:
+        v = payload.get(src)
+        if v is None:
+            continue
+        try:
+            v = cast(v)
+        except (TypeError, ValueError):
+            continue
+        if v and v > 0:
+            old = getattr(machine, col, 0) or 0
+            # 浮点列做容差比较：容量以 GB 计（整数 GB 级别），0.05 的容差足以吸收
+            # 往返序列化噪声，又不会掩盖真实的扩盘（≥1GB 的差异）；只为少写一次 UPDATE。
+            same = (abs(float(old) - float(v)) < 0.05) if cast is float else (old == v)
+            if not same:
+                setattr(machine, col, v)
+            touched = True
+    return touched
+
+
 
 
 
@@ -67,6 +127,11 @@ async def report_metrics(data: MetricData, db: Session = Depends(get_db)):
         if hasattr(data, "top_processes") and data.top_processes:
 
             machine.top_processes = data.top_processes
+
+        # HWSTATIC-20261010：固定属性快照落库（首次上报即写入；重复运行安装脚本可刷新）
+        if _save_hw_static(machine, data.model_dump()):
+
+            machine.hw_collected_at = datetime.now()
 
         db.commit()
 
@@ -219,6 +284,23 @@ def get_latest(machine_id: int, db: Session = Depends(get_db)):
         if machine and machine.top_processes:
 
             data["top_processes"] = machine.top_processes
+
+        # HWSTATIC-20261010：用「固定属性」快照回填实时数据里缺失/为 0 的字段。
+        # 典型场景：pve_vm / vmware 等由宿主机 API 采集的机器拿不到 disk_total_gb、
+        # 跨网段机器长期没有实时上报 ⇒ 总容量等恒定量不应显示成 `-`。
+        if machine:
+
+            for col, dst in _HW_FALLBACK:
+
+                snap = getattr(machine, col, 0) or 0
+
+                if snap and not data.get(dst):
+
+                    data[dst] = snap
+
+            if machine.hw_collected_at:
+
+                data["hw_collected_at"] = machine.hw_collected_at.strftime("%Y-%m-%d %H:%M:%S")
 
     except Exception:
 

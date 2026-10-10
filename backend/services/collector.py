@@ -281,10 +281,23 @@ class MetricsService:
         """写入单台 PVE 虚拟机的指标。tag: machine_id + vm_id + vm_name。
         field: cpu_percent, cpu_cores(i), memory_percent, memory_used_bytes(i),
         memory_total_bytes(i), disk_bytes(i), status(i), uptime_seconds(i)。
+
+        VMGB-20261010：额外写 `*_gb` 别名（由 `*_bytes` / 1e9 换算）。
+        原因：详情页「磁盘与 IO」卡片读的是 `disk_total_gb` / `memory_total_gb`，
+        而这里以前只写 `*_bytes` ⇒ PVE VM 明明有总容量却渲染成 `-`。
+        （不同 measurement 之间字段类型互不影响；vm_metrics 内这些新字段统一为 float。）
         """
         try:
             mid = str(machine_id)
             safe_name = str(vm_name).replace(" ", "\\ ").replace(",", "\\,").replace("=", "\\=")
+
+            def _gb(key: str) -> float:
+                try:
+                    v = int(data.get(key, 0) or 0)
+                except (TypeError, ValueError):
+                    v = 0
+                return round(v / 1e9, 2) if v > 0 else 0.0
+
             fields = [
                 f"cpu_percent={float(data.get('cpu_percent', 0))}",
                 f"cpu_cores={int(data.get('cpu_cores', 0))}i",
@@ -298,6 +311,11 @@ class MetricsService:
                 f"network_out_mbps={float(data.get('network_out_mbps', 0))}",
                 f"status={int(data.get('status', 0))}i",
                 f"uptime_seconds={int(data.get('uptime_seconds', 0))}i",
+                # VMGB-20261010：详情页直接消费的别名
+                f"memory_total_gb={_gb('memory_total_bytes')}",
+                f"memory_used_gb={_gb('memory_used_bytes')}",
+                f"disk_total_gb={_gb('disk_total_bytes')}",
+                f"disk_used_gb={_gb('disk_bytes')}",
             ]
             line = f"vm_metrics,machine_id={mid},vm_id={int(vm_id)},vm_name={safe_name} " + ",".join(fields)
             self.write_api.write(INFLUXDB_BUCKET, INFLUXDB_ORG, line)

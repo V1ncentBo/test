@@ -1,5 +1,5 @@
 """数据库模型定义 (含用户管理)"""
-from sqlalchemy import Column, Integer, String, Float, DateTime, Text, Boolean, create_engine, text
+from sqlalchemy import Column, Integer, BigInteger, String, Float, Double, DateTime, Text, Boolean, create_engine, text
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 from datetime import datetime
@@ -89,6 +89,23 @@ class MachineInfo(Base):
     # 以便告警链路（alert_service._in_maintenance）能直接读到，无需额外原生 SQL。
     maintenance_mode = Column(Boolean, default=False, comment="维护模式开关")
     maintenance_until = Column(DateTime, nullable=True, comment="维护截止时间，NULL=手动常驻")
+    # ── HWSTATIC-20261010：机器「固定属性」快照 ──────────────────────────────
+    # 详情页下方卡片里有些字段对一台机器是**恒定的**（CPU 核数 / 内存总容量 / 磁盘总容量 /
+    # 交换分区总容量 / 网卡协商速率 / 内核文件句柄上限），不随时间变化。
+    # 但它们的可获取性依赖于有采集器在持续上报：拉模型（宿主机 API）拿不到绝对值，
+    # 跨网段/离线机器也可能长期拿不到 ⇒ 详情页只能显示 `-`。
+    # ⇒ 由 agent 在**首次识别**时上报一次并落库到这里，详情页在实时数据缺失时回填。
+    #    需要刷新时，在目标机**重跑一次安装脚本**即可。
+    # ⚠ 只在值 > 0 时覆盖：绝不能用一次采集失败产生的 0 覆盖掉已有的真实值。
+    hw_cpu_cores = Column(Integer, default=0, comment="固定属性:CPU核数")
+    # ⛔ 必须用 DOUBLE（不是 FLOAT）：MySQL FLOAT 是单精度，读回来的值与 agent 上报的
+    #    双精度值**永远不相等** ⇒ 「值变了才刷时间戳」的判定会失效。
+    hw_memory_total_gb = Column(Double, default=0.0, comment="固定属性:内存总容量GB")
+    hw_disk_total_gb = Column(Double, default=0.0, comment="固定属性:磁盘总容量GB")
+    hw_swap_total_gb = Column(Double, default=0.0, comment="固定属性:交换分区总容量GB")
+    hw_net_link_speed = Column(Integer, default=0, comment="固定属性:网卡协商速率Mbps")
+    hw_file_handles_max = Column(BigInteger, default=0, comment="固定属性:内核文件句柄上限")
+    hw_collected_at = Column(DateTime, nullable=True, comment="固定属性识别(或刷新)时间")
 
 
 class AlertLog(Base):
@@ -170,6 +187,7 @@ def init_db():
     ensure_pve_columns()
     ensure_user_columns()
     ensure_db_columns()
+    ensure_hw_columns()
 
 
 def ensure_user_columns():
@@ -235,6 +253,43 @@ def ensure_db_columns():
                     print(f"[ensure] added column db_instances.{col}")
     except Exception as e:
         print(f"[ensure] db columns error: {e}")
+
+
+def ensure_hw_columns():
+    """HWSTATIC-20261010：machine_info 补「机器固定属性」快照列。
+
+    与上面两个 ensure_* 同一套路：SHOW COLUMNS 检测 + ALTER TABLE 幂等补齐，
+    规避 create_all 不会给已存在表加列的限制 ⇒ 后端重启即自动完成迁移，无需手工 SQL。
+    """
+    cols_to_add = [
+        ("hw_cpu_cores", "INT NOT NULL DEFAULT 0"),
+        ("hw_memory_total_gb", "DOUBLE NOT NULL DEFAULT 0"),
+        ("hw_disk_total_gb", "DOUBLE NOT NULL DEFAULT 0"),
+        ("hw_swap_total_gb", "DOUBLE NOT NULL DEFAULT 0"),
+        ("hw_net_link_speed", "INT NOT NULL DEFAULT 0"),
+        ("hw_file_handles_max", "BIGINT NOT NULL DEFAULT 0"),
+        ("hw_collected_at", "DATETIME NULL"),
+    ]
+    # 早期版本把三个容量列建成了 FLOAT(单精度)——单精度读回值 ≠ agent 的双精度值，
+    # 会让「值变了才刷时间戳」的判定恒为真。这里做一次幂等的类型纠正。
+    cols_fix_double = ["hw_memory_total_gb", "hw_disk_total_gb", "hw_swap_total_gb"]
+    try:
+        with engine.connect() as conn:
+            rows = conn.execute(text("SHOW COLUMNS FROM machine_info")).fetchall()
+            existing = {row[0] for row in rows}
+            types = {row[0]: str(row[1]).lower() for row in rows}
+            for col, ddl in cols_to_add:
+                if col not in existing:
+                    conn.execute(text(f"ALTER TABLE machine_info ADD COLUMN {col} {ddl}"))
+                    conn.commit()
+                    print(f"[ensure] added column machine_info.{col}")
+            for col in cols_fix_double:
+                if col in types and types[col] == "float":
+                    conn.execute(text(f"ALTER TABLE machine_info MODIFY {col} DOUBLE NOT NULL DEFAULT 0"))
+                    conn.commit()
+                    print(f"[ensure] fixed column type machine_info.{col} FLOAT -> DOUBLE")
+    except Exception as e:
+        print(f"[ensure] hw columns error: {e}")
 
 
 def get_db():

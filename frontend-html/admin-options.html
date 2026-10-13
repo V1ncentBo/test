@@ -224,6 +224,10 @@
 .rc-inp:focus{outline:none;border-color:var(--navy-700);box-shadow:0 0 0 3px var(--navy-100)}
 select.rc-inp{height:38px;appearance:none;-webkit-appearance:none;background-image:url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%236b7280' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 12px center;padding-right:34px;cursor:pointer}
 .rc-field{display:grid;gap:6px}
+/* REMARK-20261012：编辑/新增资源弹窗的「备注」多行输入框。
+   ⚠ .rc-inp 设了 min-height:38px，单行高度对多行文本太矮，这里覆盖为可拉伸的多行。 */
+.rc-remark-ta{min-height:72px;resize:vertical;font-family:inherit;line-height:1.6}
+.rc-remark-ta:focus{outline:none;border-color:var(--navy-700);box-shadow:0 0 0 3px var(--navy-100)}
 .rc-field label{font-size:12px;color:var(--n500);font-weight:500}
 .rc-btn{padding:9px 18px;font-size:13px;font-weight:500;border-radius:8px;cursor:pointer;border:1px solid transparent;white-space:nowrap;transition:all .15s}
 .rc-btn-p{background:var(--navy-800);color:#fff}
@@ -288,16 +292,26 @@ select.rc-inp{height:38px;appearance:none;-webkit-appearance:none;background-ima
 /* 编辑弹窗 */
 .rc-modal{position:fixed;inset:0;z-index:5000;display:flex;align-items:center;justify-content:center}
 .rc-modal-mask{position:absolute;inset:0;background:rgba(15,23,42,.45)}
-.rc-modal-box{position:relative;background:var(--n50);border-radius:14px;width:520px;max-width:94vw;box-shadow:0 20px 60px rgba(0,0,0,.28);overflow:hidden;pointer-events:auto;animation:rcModalIn .2s cubic-bezier(.16,1,.3,1)}
+/* SCROLLMODAL-20261012：弹窗改为「固定高度 + 内容区上下滚动」。
+   ⛔ 原实现 .rc-modal-box 无 max-height，11 个字段把它撑到**固定 712px**（实测）；
+      而 .rc-modal 是 flex + align-items:center ⇒ 视口矮于 712px 时**上下两头同时被顶出屏幕**
+      （实测 1366x768 笔记本 innerHeight≈600 时头部标题被裁掉、底部按钮够不到）。
+   ⇒ 盒子 max-height:min(84vh,600px) + 纵向 flex：head/foot 固定，只有 .rc-modal-body 滚动。
+   ⚠ flex 子项要能收缩必须 min-height:0，否则 overflow 不生效（经典 flex 陷阱）。 */
+.rc-modal-box{position:relative;background:var(--n50);border-radius:14px;width:520px;max-width:94vw;box-shadow:0 20px 60px rgba(0,0,0,.28);overflow:hidden;pointer-events:auto;animation:rcModalIn .2s cubic-bezier(.16,1,.3,1);display:flex;flex-direction:column;max-height:min(84vh,600px)}
 @keyframes rcModalIn{from{opacity:0;transform:translateY(12px) scale(.97)}to{opacity:1;transform:translateY(0) scale(1)}}
-.rc-modal-head{display:flex;align-items:center;justify-content:space-between;padding:16px 20px;font-size:15px;font-weight:650;color:var(--navy-900);border-bottom:1px solid var(--n200)}
+.rc-modal-head{flex:0 0 auto;display:flex;align-items:center;justify-content:space-between;padding:16px 20px;font-size:15px;font-weight:650;color:var(--navy-900);border-bottom:1px solid var(--n200)}
 .rc-modal-x{cursor:pointer;font-size:20px;color:var(--n400);line-height:1;padding:0 4px}
 .rc-modal-x:hover{color:var(--n900)}
-.rc-modal-body{padding:20px;display:grid;gap:12px}
+.rc-modal-body{padding:20px;display:grid;gap:12px;flex:1 1 auto;min-height:0;overflow-y:auto;overscroll-behavior:contain}
+.rc-modal-body::-webkit-scrollbar{width:8px}
+.rc-modal-body::-webkit-scrollbar-thumb{background:var(--n300);border-radius:4px}
+.rc-modal-body::-webkit-scrollbar-thumb:hover{background:var(--n400)}
+.rc-modal-body::-webkit-scrollbar-track{background:transparent}
 .rc-form2{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:12px}
 .rc-form2 > .rc-field{min-width:0}
 .rc-form2 select.rc-inp{width:100%}
-.rc-modal-foot{display:flex;justify-content:flex-end;gap:10px;padding:14px 20px;border-top:1px solid var(--n200)}
+.rc-modal-foot{flex:0 0 auto;display:flex;justify-content:flex-end;gap:10px;padding:14px 20px;border-top:1px solid var(--n200)}
 
 @media(prefers-reduced-motion:reduce){.rc-root{animation:none}}
 
@@ -398,10 +412,10 @@ select.rc-inp{height:38px;appearance:none;-webkit-appearance:none;background-ima
         <div class="rc-field"><label>机器类型</label><input class="rc-inp" id="em_type" placeholder="宿主机 / 容器 / 中间件"></div>
       </div>
       <div class="rc-form2">
-        <div class="rc-field"><label>登录账号</label><input class="rc-inp" id="em_account" placeholder="root"></div>
+        <div class="rc-field"><label>登录账号</label><input class="rc-inp" id="em_account" placeholder="root" autocomplete="off" name="em_account"></div>
         <div class="rc-field"><label>登录密码</label>
           <div class="rc-inp-wrap">
-            <input class="rc-inp" id="em_password" type="password" placeholder="留空则不修改">
+            <input class="rc-inp" id="em_password" type="password" placeholder="留空则不修改" autocomplete="new-password" name="em_password">
             <button class="rc-inp-eye" id="em_pw_eye" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="3"/></svg></button>
           </div>
         </div>
@@ -412,6 +426,9 @@ select.rc-inp{height:38px;appearance:none;-webkit-appearance:none;background-ima
           <option value="offline">离线</option>
           <option value="maintenance">维护中</option>
         </select>
+      </div>
+      <div class="rc-field"><label>备注</label>
+        <textarea class="rc-inp rc-remark-ta" id="em_remark" rows="3" maxlength="500" placeholder="选填"></textarea>
       </div>
     </div>
     <div class="rc-modal-foot">
@@ -1083,6 +1100,7 @@ function openEditRes(id){
   setField('em_type',rr.machine_type);
   setField('em_account',rr.account);setField('em_password',rr.password);
   setField('em_status',rr.status||'online');
+  setField('em_remark',rr.remark||'');
   document.getElementById('em_owner').dataset.cur=rr.owner||'';
   document.getElementById('em_proj').dataset.cur=(rr.projects||[])[0]||'';
   fillSelectOptions();
@@ -1092,7 +1110,7 @@ function openEditRes(id){
 function openCreateRes(){
   _editId=null;
   document.getElementById('rcModalHead').textContent='新增资源';
-  ['em_name','em_vm','em_domain','em_type','em_account','em_password'].forEach(function(id){setField(id,'')});
+  ['em_name','em_vm','em_domain','em_type','em_account','em_password','em_remark'].forEach(function(id){setField(id,'')});
   setField('em_status','online');
   document.getElementById('em_owner').dataset.cur='';
   document.getElementById('em_proj').dataset.cur='';
@@ -1365,6 +1383,9 @@ function openConfirmRes(rec){
 
 document.addEventListener('click',function(e){
   var t=e.target;
+  // 详情抽屉/删除确认弹窗的关闭（data-close）—— 全局兜底：
+  // 即使 openResDrawer/openConfirmRes 里动态绑定 onclick 因中途异常而丢失，点遮罩/关闭钮/Esc 仍能关。
+  var dcs=t.closest('[data-close]');if(dcs){closeResLayer();return}
   var tb=t.closest('[data-tab]');if(tb){go(tb.dataset.tab);return}
   var j=t.closest('[data-jump]');if(j){var jk=j.dataset.jump;if(jk==='physical'){if(window.__INJECT_TO__){window.__INJECT_TO__('physical');}else{location.href='/physical.html';}return;}if(jk==='cabinets'){if(window.__INJECT_TO__){window.__INJECT_TO__('cabinets');}else{location.href='/cabinets.html';}return;}if(jk==='monitor'){if(window.__GO_ROUTE__){window.__GO_ROUTE__('/machines');}else{location.href='/machines';}return;}go(jk);return}
   // 资源台账：关闭编辑弹窗
@@ -1483,7 +1504,8 @@ document.addEventListener('click',function(e){
       domain:val('em_domain'),
       owner:val('em_owner'),projects:val('em_proj')?[val('em_proj')]:[],
       machine_type:val('em_type'),account:val('em_account'),password:val('em_password'),
-      status:val('em_status')||'online'
+      status:val('em_status')||'online',
+      remark:val('em_remark')
     };
     if(!body.name){toast('资源名称不能为空','warn');return}
     var url=_editId?(API+'/resources/'+_editId):(API+'/resources');

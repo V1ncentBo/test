@@ -218,6 +218,11 @@ tbody tr:last-child td{border-bottom:none}
 .muted{color:var(--text-secondary)}
 .nowrap{white-space:nowrap}
 .acts{display:flex;gap:var(--space-1);justify-content:flex-end}
+/* REMMARKCOL-20261012：表格新增独立「备注」列。窄屏下限制宽度并省略，
+   鼠标悬停（title）看全文，避免长备注把表格撑破。 */
+.cell-remark{max-width:220px;color:var(--text-secondary);font-size:var(--text-xs)}
+.remark-text{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+@media (max-width:1023px){.cell-remark{max-width:140px}}
 
 .badge{display:inline-flex;align-items:center;gap:5px;padding:2px 8px;border-radius:var(--radius-xl);
   font-size:var(--text-xs);font-weight:600;line-height:1.5;white-space:nowrap}
@@ -519,7 +524,7 @@ html.embed .content{padding:var(--space-5);max-width:none}
             <thead><tr>
               <th>资源名称</th><th>宿主 IP</th><th>虚机 IP</th><th>域名</th>
               <th>负责人</th><th>项目</th><th>类型</th><th>位置</th>
-              <th>到期</th><th>告警</th><th>状态</th><th style="text-align:right">操作</th>
+              <th>到期</th><th>告警</th><th>状态</th><th>备注</th><th style="text-align:right">操作</th>
             </tr></thead>
             <tbody id="tbody"></tbody>
           </table>
@@ -852,14 +857,13 @@ function render(){
   /* 桌面表格 */
   tb.innerHTML = grouped(VIEW).map(function(g){
     var h = '';
-    if(g.key) h += '<tr class="group-head"><td colspan="12"><span>'+esc(g.label)+'</span><small class="muted">（'+g.items.length+' 台）</small></td></tr>';
+    if(g.key) h += '<tr class="group-head"><td colspan="13"><span>'+esc(g.label)+'</span><small class="muted">（'+g.items.length+' 台）</small></td></tr>';
     h += g.items.map(function(r){
     var followed = (r.followers||[]).indexOf(ME.username) >= 0;
     var dot = (STATUS_MAP[r.status]||{}).dot || 'var(--text-tertiary)';
     return '<tr data-id="'+r.id+'">'
       + '<td><div class="cell-name"><span class="dot" style="background:'+dot+'"></span>'+esc(r.name)
-        + (followed ? ' <span title="已关注" style="color:var(--warning)">★</span>' : '') + '</div>'
-        + (r.remark ? '<div class="muted" style="font-size:var(--text-2xs);margin-top:1px">'+esc(r.remark)+'</div>' : '') + '</td>'
+        + (followed ? ' <span title="已关注" style="color:var(--warning)">★</span>' : '') + '</div></td>'
       + '<td class="mono nowrap">'+esc(r.pve_ip||'—')+'</td>'
       + '<td class="mono nowrap">'+esc(r.vm_ip||'—')+'</td>'
       + '<td class="nowrap">'+(r.domain && r.domain!=='-' ? esc(r.domain) : '<span class="muted">—</span>')+'</td>'
@@ -872,6 +876,9 @@ function render(){
           ? '<span class="badge badge-danger">'+esc(r.alert_count)+'</span>'
           : '<span class="muted">0</span>')+'</td>'
       + '<td>'+statusBadge(r.status)+'</td>'
+      + '<td class="cell-remark">'+(r.remark
+          ? '<span class="remark-text" title="'+esc(r.remark)+'">'+esc(r.remark)+'</span>'
+          : '<span class="muted">—</span>')+'</td>'
       + '<td><div class="acts">'
         + '<button class="btn btn-ghost btn-sm act-view" data-id="'+r.id+'">详情</button>'
         + (isAdmin() ? '<button class="btn btn-ghost btn-sm act-edit" data-id="'+r.id+'">编辑</button>' : '')
@@ -1105,6 +1112,7 @@ function openEdit(r){
         + '<div class="f"><label>起始 U 位</label><input class="input mono" id="mRu" type="number" min="1" max="60" value="'+esc(d.ru_position||'')+'" placeholder="选填"/></div>'
         + '<div class="f"><label>占用 U 高</label><input class="input mono" id="mRuH" type="number" min="1" max="20" value="'+esc(d.ru_height||1)+'"/></div>'
       + '</div>'
+      + '<div class="grid2">'
       + '<div class="f"><label>状态</label><select class="input" id="mStatus">'
           + ['online','offline','maintenance'].map(function(s){
               return '<option value="'+s+'"'+(d.status===s?' selected':'')+'>'+STATUS_MAP[s].t+'</option>';

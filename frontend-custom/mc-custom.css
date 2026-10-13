@@ -1090,3 +1090,16 @@ html[data-mc-dg-ok] .main-area .deploy-guide > section.guide-section{display:non
 .main-area #mcDeployEntry .mdg-sec::after{
   content:"";flex:1 1 auto;height:1px;background:var(--border-subtle);
 }
+
+/* ══ MC-MD-STATIC-SPLIT 2026-10-13 详情页「固定属性」卡片 ══
+ * 复用原生 .chart-panel 视觉，只补网格布局与快照时间标签样式。 */
+.main-area .mcs-panel{grid-column:1/-1;--bar:var(--mc-bar-3)}
+.main-area .mcs-panel .mcs-ts{font-size:11px;font-weight:400;letter-spacing:0;color:var(--mc-text-2);margin-left:8px}
+.main-area .mcs-grid{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:12px}
+.main-area .mcs-cell{display:flex;flex-direction:column;gap:4px;min-width:0}
+.main-area .mcs-cell .mcs-k{font-size:11px;font-weight:500;letter-spacing:.02em;color:var(--mc-text-2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.main-area .mcs-cell .mcs-v{font-family:'JetBrains Mono','Cascadia Code','Fira Code',monospace;font-variant-numeric:tabular-nums;font-size:17px;font-weight:600;color:var(--mc-text);line-height:1.2}
+.main-area .mcs-cell .mcs-u{font-style:normal;font-size:11px;font-weight:400;color:var(--mc-text-2);margin-left:3px}
+.main-area .mcs-cell.mcs-empty .mcs-v{color:var(--mc-text-3)}
+@media (max-width:1023px){.main-area .mcs-grid{grid-template-columns:repeat(3,minmax(0,1fr))}}
+@media (max-width:767px){.main-area .mcs-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}

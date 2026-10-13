@@ -2556,3 +2556,133 @@
     history.pushState = function () { var r = _ps.apply(this, arguments); setTimeout(schedule, 60); return r; };
   }
 })();
+
+/* ══ MC-MD-STATIC-SPLIT 设备详情「固定属性」卡片 ══ */
+/* ===MC-MD-STATIC-SPLIT 2026-10-13 固定属性 vs 实时数据分栏===
+ * 背景：详情页「系统状态」把固定属性(CPU核数/内存·磁盘·交换区总容量/网卡速率/句柄上限)
+ *       与实时数据(CPU%/内存%/负载/进程数)混在同一片 dt/dd 里平铺，看不出哪些恒定。
+ * 方案：读取 GET /api/metrics/latest/:id 新增的 static 分组，在详情页顶部信息区下方
+ *       注入一张「固定属性」卡片，带「📌 采集于 xx」快照时间标签；实时数据仍由原生渲染。
+ * 载体：.detail-page 顶部（在 .chart-row 之前）插入自建 <section data-mc-static>。
+ * 安全：自建节点独立承载，绝不改/删原生节点；data-mc-sig 同值不写防自循环；
+ *       接口异常静默降级为不渲染；路由感知巡检 + MutationObserver 自愈。
+ */
+(function () {
+  'use strict';
+
+  var HOST_ID = 'mc-md-static';
+  var PAGE_SEL = '.main-area .detail-page';
+  var ANCHOR_SEL = '.chart-row';
+
+  var FIELDS = [
+    { k: 'cpu_cores', label: 'CPU 核数', unit: '核', fmt: 'int' },
+    { k: 'memory_total_gb', label: '内存总容量', unit: 'GB', fmt: 'f2' },
+    { k: 'disk_total_gb', label: '磁盘总容量', unit: 'GB', fmt: 'f2' },
+    { k: 'swap_total_gb', label: '交换区容量', unit: 'GB', fmt: 'f2' },
+    { k: 'net_link_speed', label: '网卡速率', unit: 'Mbps', fmt: 'int' },
+    { k: 'file_handles_max', label: '文件句柄上限', unit: '', fmt: 'int' }
+  ];
+
+  var ST = { sig: '', data: null };
+
+  function esc(s) {
+    return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
+      return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c];
+    });
+  }
+  function authHeaders() {
+    var t = '';
+    try { t = localStorage.getItem('token') || ''; } catch (e) {}
+    return t ? { Authorization: 'Bearer ' + t } : {};
+  }
+  function pathId() {
+    var m = (location.pathname || '').match(/\/monitor\/(\d+)/);
+    return m ? parseInt(m[1], 10) : 0;
+  }
+  function fmtVal(v, mode) {
+    if (v == null || v === '' || v === 0) return null;
+    var n = Number(v);
+    if (!isFinite(n)) return null;
+    if (mode === 'int') return String(Math.round(n));
+    if (mode === 'f2') return n.toFixed(2).replace(/\.00$/, '');
+    return String(n);
+  }
+
+  function build(staticData) {
+    var cells = [];
+    var hasAny = false;
+    FIELDS.forEach(function (f) {
+      var v = fmtVal(staticData[f.k], f.fmt);
+      if (v == null) { cells.push('<div class="mcs-cell mcs-empty"><span class="mcs-k">' + esc(f.label) + '</span><span class="mcs-v">—</span></div>'); return; }
+      hasAny = true;
+      cells.push('<div class="mcs-cell"><span class="mcs-k">' + esc(f.label) + '</span><span class="mcs-v">' + esc(v) + (f.unit ? '<em class="mcs-u">' + esc(f.unit) + '</em>' : '') + '</span></div>');
+    });
+    if (!hasAny) return '';
+    var ts = staticData.hw_collected_at ? ' · 采集于 ' + esc(staticData.hw_collected_at) : '';
+    return '' +
+      '<section id="' + HOST_ID + '" class="chart-panel mcs-panel" data-mc-static="1">' +
+        '<div class="chart-header"><h4 class="chart-title">📌 固定属性<span class="mcs-ts">' + ts + '</span></h4></div>' +
+        '<div class="mcs-grid">' + cells.join('') + '</div>' +
+      '</section>';
+  }
+
+  function mount() {
+    var id = pathId();
+    if (!id) return;
+    var page = document.querySelector(PAGE_SEL);
+    if (!page) return;
+    // 已存在 → 幂等，不重渲染
+    if (document.getElementById(HOST_ID)) return;
+
+    var anchor = page.querySelector(ANCHOR_SEL);
+    if (!anchor) return;
+
+    fetch('/api/metrics/latest/' + id, { headers: authHeaders() })
+      .then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); })
+      .then(function (j) {
+        var sd = (j && j.static) || {};
+        var html = build(sd);
+        if (!html) return;
+        var wrap = document.createElement('div');
+        wrap.innerHTML = html;
+        var node = wrap.firstChild;
+        anchor.parentNode.insertBefore(node, anchor);
+      })
+      .catch(function () { /* 静默降级 */ });
+  }
+
+  function unmount() {
+    var h = document.getElementById(HOST_ID);
+    if (h && h.parentNode) h.parentNode.removeChild(h);
+  }
+
+  var timer = null, confirm = null;
+  function schedule() {
+    if (timer) clearTimeout(timer);
+    timer = setTimeout(function () { timer = null; mount(); }, 180);
+    if (confirm) clearTimeout(confirm);
+    confirm = setTimeout(function () { confirm = null; mount(); }, 900);
+  }
+
+  var _last2 = location.pathname;
+  function boot2() {
+    try {
+      mount();
+      var mo = new MutationObserver(schedule);
+      mo.observe(document.body, { childList: true, subtree: true });
+      setInterval(function () {
+        if (location.pathname !== _last2) { _last2 = location.pathname; schedule(); return; }
+        if (pathId() && !document.getElementById(HOST_ID)) schedule();
+        if (!pathId() && document.getElementById(HOST_ID)) unmount();
+      }, 1500);
+    } catch (e) {}
+  }
+
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot2);
+  else boot2();
+  window.addEventListener('popstate', schedule);
+  var _ps3 = history.pushState;
+  if (_ps3) {
+    history.pushState = function () { var r = _ps3.apply(this, arguments); setTimeout(schedule, 60); return r; };
+  }
+})();

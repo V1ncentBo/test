@@ -318,6 +318,9 @@ def _build_fields(m: dict, idx: Optional[dict] = None,
     fields["memory_total"] = round(total / 1e9, 2)   # main.py 不转换，collector 别名写入 memory_total_gb
     fields["memory_used"] = round(used / 1e9, 2)
     fields["swap_used_gb"] = round((swap_total - swap_free) / 1e9, 1)
+    # NEFIX-20261013：补输出 swap 总容量（此前只算 used，未单独输出）——
+    #   供 pull 回写 machine_info.hw_swap_total_gb，使 node_exporter 机器也有完整固定属性。
+    fields["swap_total"] = round(swap_total / 1e9, 2)
     fields["swap_in_rate"] = int(round(rate("pswpin")))    # 页/s
     fields["swap_out_rate"] = int(round(rate("pswpout")))  # 页/s
     fields["mem_page_faults"] = int(round(rate("pgfault")))  # 次/s

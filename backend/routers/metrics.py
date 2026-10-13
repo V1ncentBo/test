@@ -87,6 +87,12 @@ def _save_hw_static(machine, payload: dict) -> bool:
         except (TypeError, ValueError):
             continue
         if v and v > 0:
+            # ⛔ NEFIX-20261013 范围守卫：部分系统的 fs.file-max 为 unsigned 64-bit 上限
+            #   (18446744073709551615)，超出 MySQL BIGINT(有符号, max 2^63-1) 范围 ⇒
+            #   INSERT 报 (1264) Out of range 并使整个事务回滚（连带整轮 collector 失败）。
+            #   超范围的哨兵值一律丢弃，绝不写库、也不覆盖已有真实值。
+            if cast is int and v > 9223372036854775807:
+                continue
             old = getattr(machine, col, 0) or 0
             # 浮点列做容差比较：容量以 GB 计（整数 GB 级别），0.05 的容差足以吸收
             # 往返序列化噪声，又不会掩盖真实的扩盘（≥1GB 的差异）；只为少写一次 UPDATE。
@@ -306,7 +312,25 @@ def get_latest(machine_id: int, db: Session = Depends(get_db)):
 
         pass
 
-    return {"machine_id": machine_id, "metrics": data}
+    # ══ HWSTATIC-SPLIT-20261013：固定属性 vs 实时数据 分栏 ════════════════════
+    # 详情页「系统状态」原来把固定属性(CPU核数/总容量/网卡速率/句柄上限)和实时数据
+    # (CPU%/内存%/负载/进程数)混在同一个 data 里平铺，用户看不出哪些恒定、哪些实时。
+    # 这里在返回体里**显式拆出 static 分组**，前端据此分栏 + 加快照时间标签。
+    # ⚠ 兼容：metrics 里仍保留原字段（不动既有详情页渲染），只**新增** static 字段。
+    static_fields = {}
+    for col, dst in _HW_FALLBACK:
+        snap = getattr(machine, col, 0) or 0 if machine else 0
+        if snap:
+            static_fields[dst] = snap
+    if machine and machine.hw_collected_at:
+        static_fields["hw_collected_at"] = machine.hw_collected_at.strftime("%Y-%m-%d %H:%M:%S")
+    # NEFIX-20261013：pull(node_exporter) 机器的 hw_* 由 node_scraper 回写、**不写 hw_collected_at**
+    #   （该列是「本机有 agent push」的判据，见 main.py DUPDIAG），故时间标签回退到 updated_at，
+    #   让所有机器（含 node_exporter）都能显示「采集于 …」。agent 机器仍优先用 hw_collected_at。
+    elif machine and machine.updated_at and static_fields:
+        static_fields["hw_collected_at"] = machine.updated_at.strftime("%Y-%m-%d %H:%M:%S")
+
+    return {"machine_id": machine_id, "metrics": data, "static": static_fields}
 
 
 

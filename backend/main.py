@@ -10,11 +10,9 @@ import time
 from datetime import datetime, timedelta
 
 from models.database import init_db, SessionLocal, MachineInfo, AlertLog, AIAnalysisLog
-import models.cmdb
 import models.resource_cmdb
 from routers import machines, metrics, alerts, ai, auth, register_node
 from routers import settings, report_schedule, ai_settings, advanced_routes, batch1_routes
-from routers.cmdb import router as cmdb_router
 from routers.resource_cmdb import router as resource_cmdb_router
 from routers.dbs import router as dbs_router, db_collector
 from routers.files import router as files_router
@@ -335,6 +333,24 @@ async def node_exporter_collector():
                         if await asyncio.to_thread(metrics_service.write_metrics, data):
                             success += 1
                             metrics_service.touch_last_seen(m.id)
+                            # ⭐ NEFIX-20261013：pull 采集器也回写「固定属性」到 machine_info.hw_*。
+                            #   此前 node_scraper 只写 InfluxDB ⇒ 未装完整版 agent 的机器详情页
+                            #   没有「固定属性」卡片（/latest 的 static 分组为空）。此处顺手回写，
+                            #   让**所有 node_exporter 纳管机器**都显示固定属性（覆盖 4 → ~20 台）。
+                            #   ⛔ 刻意**不写 hw_collected_at**：该列被上方 DUPDIAG 用作「本机有 agent
+                            #     在 push」的判据，一旦写入会让本机下一轮被 pull 跳过（实时数据停更）。
+                            #     pull 机器的时间标签由 get_latest 回退到 updated_at。
+                            #   ⚠ res 已在上方把 disk_total_gb 改名为 disk_total，源名与 _HW_FIELDS 对齐。
+                            try:
+                                from routers.metrics import _save_hw_static
+                                if _save_hw_static(m, res):
+                                    db.commit()
+                            except Exception as _he:
+                                # ⛔ 必须 rollback：否则 Session 进入「已失效」状态，
+                                #   后续 commit（含 online_status 更新）全部失败、整轮拖垮。
+                                try: db.rollback()
+                                except Exception: pass
+                                print(f"[NodeExporterCollector] 固定属性回写异常 {m.ip}: {_he}")
                             if m.online_status != "online":
                                 m.online_status = "online"
                                 m.updated_at = datetime.now()
@@ -754,7 +770,6 @@ app.include_router(ai_settings.router)
 app.include_router(advanced_routes.router)
 app.include_router(batch1_routes.router)
 app.include_router(register_node.router)
-app.include_router(cmdb_router)
 app.include_router(resource_cmdb_router)
 app.include_router(dbs_router)
 # 运维文件库（资源管理第 7 项）：镜像/服务包 上传下载审计

@@ -1041,12 +1041,13 @@ function exportPhyCsv(){
   if(!rows || !rows.length){ toast('暂无资源可导出'); return; }
   var statusZh = function(s){ var m = STATUS_MAP[s]; return m ? m.t : (s || ''); };
   var cell = function(v){ v = v == null ? '' : String(v); return /[",\r\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v; };
-  var headers = ['资源名称','IP','负责人','机器类型','机房','机柜','到期','办公区','状态','所属项目','备注'];
+  var headers = ['资源名称','IP','SN码','负责人','机器类型','机房','机柜','到期','办公区','状态','所属项目','备注'];
   var lines = [headers.map(cell).join(',')];
   rows.forEach(function(r){
     lines.push([
       r.name || '',
       r.pve_ip || '',
+      r.domain || '',
       r.owner || '',
       normalizeType(r.machine_type) || '',
       roomOfRes(r) || '',
@@ -1363,8 +1364,11 @@ function openImport(){
   $('#layerHost').innerHTML = '<div class="scrim" data-close="1"></div><div class="modal" style="width:min(560px,calc(100vw - 32px))">'
     + '<div class="modal-head">批量导入物理机<button class="modal-x" data-close="1" style="background:none;border:none;font-size:20px;cursor:pointer;color:var(--text-secondary);line-height:1">×</button></div>'
     + '<div class="modal-body">'
-    + '<p class="muted" style="margin:0 0 10px;font-size:var(--text-xs);line-height:1.6">每行一条，字段用<b>逗号</b>或<b>Tab</b>分隔（可直接粘贴 Excel 单元格）。顺序：<br><code>名称, 本机IP, 负责人, 机器类型, 项目</code></p>'
-    + '<textarea class="input" id="imTa" rows="8" placeholder="web-01, 192.168.1.10, 张伟, 服务器 / 物理机, 核心交易"></textarea>'
+    + '<p class="muted" style="margin:0 0 10px;font-size:var(--text-xs);line-height:1.6">每行一条，字段用<b>逗号</b>或<b>Tab</b>分隔（可直接粘贴 Excel 单元格），可带表头（推荐下载模板）。列顺序：<br><code>资源名称, IP, SN码, 负责人, 机器类型, 机房, 机柜, 到期, 办公区, 状态, 所属项目, 备注</code></p>'
+    + '<p class="muted" style="margin:0 0 10px;font-size:var(--text-xs);line-height:1.6;border-left:3px solid var(--border-color);padding-left:8px">'
+      + '去重规则：以 <b>SN码</b> 匹配已有物理机（忽略大小写与首尾空格）—— <b>命中则更新</b>该机器（保留关注人/评论，时间线追加一条「编辑资源」），<b>未命中则新增</b>；'
+      + '<b>SN 码为空的行无法匹配，一律新增</b>。更新时<b>留空的列不会清空</b>原有数据。</p>'
+    + '<textarea class="input" id="imTa" rows="8" placeholder="web-01, 192.168.1.10, 9800188103695037, 张伟, 服务器 / 物理机, A 栋机房, A-01, 2027-12-31, 南办公区, 在线, 核心交易, 核心交易主库"></textarea>'
     + '<div style="display:flex;align-items:center;gap:10px;margin-top:10px"><label class="btn btn-secondary" style="cursor:pointer">选择 CSV<input type="file" id="imFile" accept=".csv,.txt" style="display:none"></label><span class="muted" id="imName" style="font-size:var(--text-xs)">未选择文件</span></div>'
     + '<div id="imResult" style="margin-top:10px"></div>'
     + '</div>'
@@ -1382,35 +1386,156 @@ function openImport(){
     go.disabled=true; go.textContent='导入中…';
     doImportPhy(rows).then(function(r){
       go.disabled=false; go.textContent='开始导入';
-      res.innerHTML='成功 <b>'+r.ok+'</b> 条'+(r.fail?('，失败 <b>'+r.fail+'</b> 条'):'')+(r.errs.length?'<br>'+r.errs.slice(0,20).map(function(x){return esc(x)}).join('<br>'):'');
-      load(); closeLayer();
+      var h='新增 <b>'+r.okNew+'</b> 条，更新 <b>'+r.okUpd+'</b> 条'+(r.fail?('，失败 <b>'+r.fail+'</b> 条'):'');
+      if(r.noSn) h+='<br><span class="muted">其中 '+r.noSn+' 行无 SN 码，无法匹配，已按新增处理</span>';
+      if(r.dupKeys&&r.dupKeys.length) h+='<br><span class="muted">⚠ 文件内 SN 重复 '+r.dupKeys.length+' 处（'+esc(r.dupKeys.slice(0,5).join('、'))+'），后出现者覆盖前者</span>';
+      if(r.errs.length) h+='<br>'+r.errs.slice(0,20).map(function(x){return esc(x)}).join('<br>');
+      res.innerHTML=h;
+      toast('导入完成：新增 '+r.okNew+'，更新 '+r.okUpd+(r.fail?('，失败 '+r.fail):''), r.fail?'warn':'ok');
+      go.disabled=true; go.textContent='完成';
+      load(); /* 不自动关窗：保留结果面板供核对，用户点「取消/×」关闭 */
     }).catch(function(e){ go.disabled=false; go.textContent='开始导入'; res.innerHTML=esc(e.message||'导入失败'); });
   });
 }
+/* CSV/TSV 记录状态机：支持引号包裹（引号内逗号/换行/"" 转义）与 Tab 分隔 */
+function parseCsvRecords(text){
+  text=String(text||'').replace(/^\ufeff/,'');
+  var recs=[], cur=[], field='', inQ=false, i, n=text.length;
+  for(i=0;i<n;i++){
+    var ch=text.charAt(i);
+    if(inQ){
+      if(ch==='"'){ if(text.charAt(i+1)==='"'){ field+='"'; i++; } else { inQ=false; } }
+      else { field+=ch; }
+    }else{
+      if(ch==='"'){ inQ=true; }
+      else if(ch===','||ch==='\t'){ cur.push(field); field=''; }
+      else if(ch==='\r'){ /* 忽略 CR */ }
+      else if(ch==='\n'){ cur.push(field); field=''; recs.push(cur); cur=[]; }
+      else { field+=ch; }
+    }
+  }
+  if(field!==''||cur.length){ cur.push(field); recs.push(cur); }
+  return recs;
+}
+/* 表头别名 → 资源对象字段 */
+var IMPORT_ALIAS={
+  '资源名称':'name','名称':'name',
+  'IP':'pve_ip','本机IP':'pve_ip',
+  'SN码':'domain','SN':'domain','序列号':'domain',
+  '负责人':'owner',
+  '机器类型':'machine_type',
+  '机房':'room',
+  '机柜':'cabinet',
+  '到期':'expire_at','到期时间':'expire_at',
+  '办公区':'office_area',
+  '状态':'status',
+  '所属项目':'projects','项目':'projects',
+  '备注':'remark'
+};
+/* 解析导入文本：优先按表头名识别（与导出 CSV 同构），兼容旧 5 列无表头格式 */
 function parseImportPhy(text){
-  return String(text||'').split(/\r?\n/).map(function(l){return l.trim()}).filter(Boolean).map(function(line){
-    var c=line.split(/[,\t]/).map(function(s){return s.trim()});
-    if(!c[0]) return null;
-    return {name:c[0], pve_ip:c[1]||'', owner:c[2]||'', machine_type:normalizeType(c[3]||''), projects:c[4]?[c[4]]:[], category:'physical', status:'online'};
+  var recs=parseCsvRecords(text).map(function(r){ return r.map(function(s){ return (s||'').trim(); }); })
+    .filter(function(r){ return r.some(function(s){ return s!==''; }); });
+  if(!recs.length) return [];
+  var idx={}, head=recs[0];
+  if(head[0]==='资源名称'||head[0]==='名称'){
+    head.forEach(function(h,i){ var k=IMPORT_ALIAS[h]; if(k&&idx[k]===undefined) idx[k]=i; });
+    recs=recs.slice(1);
+  }else if(head.length>=6){
+    /* 无表头但列数≥6 ⇒ 视为新 12 列顺序 */
+    idx={name:0,pve_ip:1,domain:2,owner:3,machine_type:4,room:5,cabinet:6,expire_at:7,office_area:8,status:9,projects:10,remark:11};
+  }else{
+    /* 旧格式：名称, 本机IP, 负责人, 机器类型, 项目 */
+    idx={name:0,pve_ip:1,owner:2,machine_type:3,projects:4};
+  }
+  var get=function(r,k){ var i=idx[k]; return (i===undefined)?'':(r[i]||''); };
+  var statusRev={}; Object.keys(STATUS_MAP).forEach(function(k){ statusRev[STATUS_MAP[k].t]=k; });
+  return recs.map(function(r){
+    var name=get(r,'name'); if(!name) return null;
+    var room=get(r,'room'), cab=get(r,'cabinet'), cabId=null, loc='';
+    if(room||cab){
+      for(var j=0;j<CABS.length;j++){
+        /* ⛔ 必须「机房 + 机柜」都填且都匹配才关联机柜；只填机房时不得自动挂到该机房第一个机柜 */
+        if(cab&&(CABS[j].room_name||'')===room&&(CABS[j].cabinet_name||'')===cab){ cabId=CABS[j].id; break; }
+      }
+      loc=room?(cab?(room+'-'+cab):room):cab;
+    }
+    var stRaw=get(r,'status');
+    var st=statusRev[stRaw]||(/^(online|offline|maintenance)$/.test(stRaw)?stRaw:'online');
+    var projRaw=get(r,'projects');
+    var projects=projRaw?projRaw.split(/[、,，;；\/]/).map(function(s){return s.trim()}).filter(Boolean):[];
+    /* _given = 本次 CSV 里「真正填了值」的字段（空单元格 = 不修改），供 upsert 更新时按字段提交 */
+    var given=['name'];
+    if(get(r,'pve_ip')) given.push('pve_ip');
+    if(get(r,'domain')) given.push('domain');
+    if(get(r,'owner')) given.push('owner');
+    if(get(r,'machine_type')) given.push('machine_type');
+    if(room||cab) given.push('location');
+    if(cabId!==null) given.push('cabinet_id');
+    if(get(r,'expire_at')) given.push('expire_at');
+    if(get(r,'office_area')) given.push('office_area');
+    if(stRaw) given.push('status');
+    if(projRaw) given.push('projects');
+    if(get(r,'remark')) given.push('remark');
+    return {
+      name:name, category:'physical',
+      pve_ip:get(r,'pve_ip'), domain:get(r,'domain'), owner:get(r,'owner'),
+      machine_type:normalizeType(get(r,'machine_type')),
+      location:loc, cabinet_id:cabId,
+      expire_at:get(r,'expire_at'), office_area:get(r,'office_area'),
+      status:st, projects:projects, remark:get(r,'remark'),
+      _given:given
+    };
   }).filter(Boolean);
 }
+/* 批量导入（upsert）：
+ * 匹配键 = domain(SN码)，仅在 category=physical 范围内、忽略大小写与首尾空格。
+ *  - 行有 SN 且命中已有机器 ⇒ PUT 更新该条（保留 id / 关注人 / 评论 / 时间线追加）
+ *  - 行有 SN 但未命中 ⇒ POST 新增（并把新 id 记入映射，文件内后续同 SN 行走更新）
+ *  - 行无 SN ⇒ 无法匹配，一律 POST 新增
+ * ⛔ 更新时只提交「CSV 中真正填了值」的字段（_given），空单元格被视为「不修改」，避免误清空已有数据。
+ */
 function doImportPhy(rows){
-  var ok=0, fail=0, errs=[];
-  var chain=Promise.resolve();
+  var okNew=0, okUpd=0, fail=0, errs=[], snMap={}, snCount={};
+  var norm=function(v){ return String(v==null?'':v).trim().toUpperCase(); };
+  var strip=function(r){ var o={}; for(var k in r){ if(k.charAt(0)!=='_') o[k]=r[k]; } return o; };
+  var pick=function(r){ var o={}, g=r._given||['name']; g.forEach(function(k){ if(k in r) o[k]=r[k]; }); if(!('name' in o)) o.name=r.name; return o; };
+  var noSn=0;
   rows.forEach(function(r){
-    chain=chain.then(function(){
-      syncOwner(r.owner); // 新负责人写入 OPTS.owners 并持久化（与编辑保存一致）
-      return req(API+'/resources',{method:'POST',body:r}).then(function(){ok++}).catch(function(e){fail++;errs.push(r.name+'：'+e.message)});
+    if(norm(r.domain)){ var k=norm(r.domain); snCount[k]=(snCount[k]||0)+1; } else { noSn++; }
+  });
+  var dupKeys=Object.keys(snCount).filter(function(k){ return snCount[k]>1; });
+  return req(API+'/resources?category=physical').then(function(list){
+    (list||[]).forEach(function(x){ var k=norm(x.domain); if(k && snMap[k]===undefined) snMap[k]=x.id; });
+    var outdated=0; // 命中过、但已被本次文件更新过的条数（仅统计不报错）
+    var chain=Promise.resolve();
+    rows.forEach(function(r){
+      chain=chain.then(function(){
+        syncOwner(r.owner); // 新负责人写入 OPTS.owners 并持久化（与编辑保存一致）
+        var sn=norm(r.domain), hit=(sn && snMap[sn]!==undefined) ? snMap[sn] : null;
+        if(hit){
+          return req(API+'/resources/'+hit,{method:'PUT',body:pick(r)})
+            .then(function(){ okUpd++; })
+            .catch(function(e){ fail++; errs.push(r.name+'：'+e.message); });
+        }
+        return req(API+'/resources',{method:'POST',body:strip(r)})
+          .then(function(created){ okNew++; if(sn && created && created.id) snMap[sn]=created.id; })
+          .catch(function(e){ fail++; errs.push(r.name+'：'+e.message); });
+      });
+    });
+    return chain.then(function(){
+      return { okNew:okNew, okUpd:okUpd, ok:okNew+okUpd, fail:fail, errs:errs,
+               noSn:noSn, dupKeys:dupKeys };
     });
   });
-  return chain.then(function(){return {ok:ok,fail:fail,errs:errs}});
 }
 // 下载硬件台账批量导入 CSV 模板（含 BOM，Excel 中文不乱码）
+// ⭐ 表头与「导出 CSV」逐列同名同序（12 列），保证「导出 → 编辑 → 回导」闭环
 function downloadPhyTemplate(){
-  var header='名称,本机IP,负责人,机器类型,项目';
-  var s1='web-01,192.168.1.10,张伟,服务器 / 物理机,核心交易';
-  var s2='sw-01,192.168.1.20,李静,网络设备,核心交易';
-  var csv='﻿'+header+'\n'+s1+'\n'+s2+'\n';
+  var header='资源名称,IP,SN码,负责人,机器类型,机房,机柜,到期,办公区,状态,所属项目,备注';
+  var s1='web-01,192.168.1.10,9800188103695037,张伟,服务器 / 物理机,A 栋机房,A-01,2027-12-31,南办公区,在线,核心交易,核心交易主库';
+  var s2='sw-01,192.168.1.20,,李静,网络设备,A 栋机房,A-02,2027-12-31,南办公区,在线,核心交易,接入交换机';
+  var csv='\ufeff'+header+'\r\n'+s1+'\r\n'+s2+'\r\n';
   var blob=new Blob([csv],{type:'text/csv;charset=utf-8'});
   var url=URL.createObjectURL(blob);
   var a=document.createElement('a');

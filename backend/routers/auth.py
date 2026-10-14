@@ -8,7 +8,6 @@ from fastapi import APIRouter, HTTPException, Depends, Header, Query, Request
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 import jwt
-import re
 
 from models.database import User, get_db
 

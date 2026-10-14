@@ -17,8 +17,6 @@ DINGTALK_WEBHOOK = os.getenv("DINGTALK_WEBHOOK", "")
 DINGTALK_SECRET = os.getenv("DINGTALK_SECRET", "")
 
 # 冷却缓存：key = "machine_id:alert_type" -> timestamp (持久化到文件)
-import os
-import json
 
 # 冷却缓存持久化文件
 COOLDOWN_CACHE_FILE = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data", "cooldown_cache.json")

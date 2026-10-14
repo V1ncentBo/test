@@ -6,7 +6,7 @@
 - 落盘名 stored_name 由 sha256 前缀 + 时间戳 + 白名单字符组成，
   原始名 name 只用于展示与下载回填，绝不参与路径拼接（防路径穿越）。
 """
-from sqlalchemy import Column, Integer, String, BigInteger, DateTime, Text, Index
+from sqlalchemy import Column, Integer, String, BigInteger, DateTime, Index
 from datetime import datetime
 
 from models.database import Base

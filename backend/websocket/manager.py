@@ -2,7 +2,6 @@
 from fastapi import WebSocket
 from typing import Dict, List
 import json
-import asyncio
 
 
 def _json_dumps(obj):

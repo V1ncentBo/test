@@ -16,7 +16,6 @@
      兼容策略：v1 同时接受 "resources" 权限，避免只勾了资源台账的用户看不了入口。
 """
 import os
-import io
 import time
 import uuid
 import hashlib
@@ -25,7 +24,7 @@ import secrets
 from datetime import datetime, timedelta
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Header, Query, Request, UploadFile, File, Form
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, UploadFile, File, Form
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import func, desc, asc, or_

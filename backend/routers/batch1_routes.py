@@ -4,7 +4,7 @@ Batch 1 高级功能 — 分组聚合 / SLA趋势 / 同环比 / 指标基线 / �
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from datetime import datetime, timedelta
-import logging, socket, json
+import logging, socket
 
 from models.database import get_db, MachineInfo
 from routers.auth import get_current_user

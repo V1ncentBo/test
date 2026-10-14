@@ -10,7 +10,6 @@
 拿到最准确的内网 IP（guest agent 未启用时自动退化为 ARP 方案）。
 """
 import re
-import time
 import ipaddress
 import datetime
 

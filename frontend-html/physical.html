@@ -190,7 +190,7 @@ select.input, select.select, #mOwner{
   background-repeat:no-repeat; background-position:right 10px center; background-size:14px 14px;
   padding-right:32px;
 }
-#mOwner::-webkit-list-button{ -webkit-appearance:none; appearance:none; }
+#mOwner::-webkit-list-button,#mOwner::-webkit-calendar-picker-indicator{ -webkit-appearance:none!important; appearance:none!important; display:none!important; width:0!important; height:0!important; opacity:0!important; padding:0!important; margin:0!important }
 .spacer{flex:1}
 .btn{
   border-radius:var(--radius-sm);padding:7px 14px;font-size:var(--text-sm);font-weight:500;
@@ -494,7 +494,7 @@ html.embed .content{padding:var(--space-5);max-width:none}
           <svg id="icoTable" viewBox="0 0 24 24" fill="none" stroke="currentColor"><rect x="3" y="3" width="7" height="8" rx="1"/><rect x="14" y="3" width="7" height="8" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
           <svg id="icoList" viewBox="0 0 24 24" fill="none" stroke="currentColor" style="display:none"><path d="M8 6h13M8 12h13M8 18h13"/><circle cx="4" cy="6" r="1"/><circle cx="4" cy="12" r="1"/><circle cx="4" cy="18" r="1"/></svg>
         </button>
-        <button class="btn btn-secondary" id="btnExport">导出 CSV</button>
+        <button class="btn btn-secondary" id="btnExport">导出</button>
         <button class="btn btn-secondary" id="btnImport" style="display:none">批量导入</button>
         <button class="btn btn-secondary" id="btnImportTpl" style="display:none">下载模板</button>
         <button class="btn btn-primary" id="btnNew" style="display:none">
@@ -1035,28 +1035,22 @@ function doSeed(){
   }).catch(function(e){ toast(e.message, 'err'); });
 }
 
-/* ===================== 硬件台账：导出 CSV ===================== */
+/* ===================== 硬件台账：导出（格式可选：Excel 带样式 / CSV 可编辑回导） ===================== */
+/* 导出 CSV（含序号列，便于二次编辑与回导） */
 function exportPhyCsv(){
   var rows = (typeof VIEW !== 'undefined' && VIEW && VIEW.length) ? VIEW : ROWS;
   if(!rows || !rows.length){ toast('暂无资源可导出'); return; }
   var statusZh = function(s){ var m = STATUS_MAP[s]; return m ? m.t : (s || ''); };
   var cell = function(v){ v = v == null ? '' : String(v); return /[",\r\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v; };
-  var headers = ['资源名称','IP','SN码','负责人','机器类型','机房','机柜','到期','办公区','状态','所属项目','备注'];
+  var headers = ['序号','资源名称','IP','SN码','负责人','机器类型','机房','机柜','到期','办公区','状态','所属项目','备注'];
   var lines = [headers.map(cell).join(',')];
-  rows.forEach(function(r){
+  rows.forEach(function(r, i){
     lines.push([
-      r.name || '',
-      r.pve_ip || '',
-      r.domain || '',
-      r.owner || '',
-      normalizeType(r.machine_type) || '',
-      roomOfRes(r) || '',
-      cabOfRes(r) || '',
-      r.expire_at || '',
-      r.office_area || '',
-      statusZh(r.status),
-      (r.projects || []).join('、'),
-      r.remark || ''
+      String(i + 1),
+      r.name || '', r.pve_ip || '', r.domain || '', r.owner || '',
+      normalizeType(r.machine_type) || '', roomOfRes(r) || '', cabOfRes(r) || '',
+      r.expire_at || '', r.office_area || '', statusZh(r.status),
+      (r.projects || []).join('、'), r.remark || ''
     ].map(cell).join(','));
   });
   var csv = '\ufeff' + lines.join('\r\n');
@@ -1068,7 +1062,70 @@ function exportPhyCsv(){
   a.download = '硬件台账-' + d.getFullYear() + p(d.getMonth()+1) + p(d.getDate()) + '-' + p(d.getHours()) + p(d.getMinutes()) + '.csv';
   document.body.appendChild(a); a.click(); document.body.removeChild(a);
   setTimeout(function(){ URL.revokeObjectURL(url); }, 1000);
-  toast('已导出 ' + rows.length + ' 条资源');
+  toast('已导出 ' + rows.length + ' 条资源（CSV）');
+}
+
+/* 导出 Excel（.xls，HTML 表格，表头与「离线」加粗） */
+function exportPhyExcel(){
+  var rows = (typeof VIEW !== 'undefined' && VIEW && VIEW.length) ? VIEW : ROWS;
+  if(!rows || !rows.length){ toast('暂无资源可导出'); return; }
+  var statusZh = function(s){ var m = STATUS_MAP[s]; return m ? m.t : (s || ''); };
+  var ex = function(v){ return String(v==null?'':v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); };
+  /* 左侧首列 = 硬件序号（1 起，末行即硬件总个数） */
+  var headers = ['序号','资源名称','IP','SN码','负责人','机器类型','机房','机柜','到期','办公区','状态','所属项目','备注'];
+  var thStyle = 'border:1px solid #b0b7c3;background:#eef2f7;font-weight:bold;padding:5px 10px;white-space:nowrap';
+  var tdStyle = 'border:1px solid #b0b7c3;padding:5px 10px;vertical-align:middle';
+  var head = '<tr>' + headers.map(function(h){ return '<th style="' + thStyle + '">' + ex(h) + '</th>'; }).join('') + '</tr>';
+  var body = rows.map(function(r, i){
+    var st = statusZh(r.status);
+    /* 离线状态加粗 */
+    var stHtml = (r.status === 'offline' || st === '离线') ? '<b>' + ex(st) + '</b>' : ex(st);
+    var vals = [String(i + 1), r.name || '', r.pve_ip || '', r.domain || '', r.owner || '',
+      normalizeType(r.machine_type) || '', roomOfRes(r) || '', cabOfRes(r) || '',
+      r.expire_at || '', r.office_area || '', null, (r.projects || []).join('、'), r.remark || ''];
+    var tds = vals.map(function(v, idx){
+      if(idx === 10) return '<td style="' + tdStyle + '">' + stHtml + '</td>';   /* 状态列 */
+      return '<td style="' + tdStyle + '">' + ex(v) + '</td>';
+    }).join('');
+    return '<tr>' + tds + '</tr>';
+  }).join('');
+  var html = '<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">'
+    + '<head><meta charset="utf-8">'
+    + '<!--[if gte mso 9]><xml><x:ExcelWorkbook><x:ExcelWorksheets><x:ExcelWorksheet>'
+    + '<x:Name>硬件台账</x:Name><x:WorksheetOptions><x:DisplayGridlines/></x:WorksheetOptions>'
+    + '</x:ExcelWorksheet></x:ExcelWorksheets></x:ExcelWorkbook></xml><![endif]-->'
+    + '</head><body><table style="border-collapse:collapse;font-family:\'Microsoft YaHei\',Arial,sans-serif;font-size:13px">'
+    + '<thead>' + head + '</thead><tbody>' + body + '</tbody></table></body></html>';
+  var blob = new Blob(['\ufeff' + html], { type:'application/vnd.ms-excel;charset=utf-8' });
+  var url = URL.createObjectURL(blob);
+  var a = document.createElement('a');
+  var d = new Date(), p = function(n){ return n < 10 ? '0' + n : n; };
+  a.href = url;
+  a.download = '硬件台账-' + d.getFullYear() + p(d.getMonth()+1) + p(d.getDate()) + '-' + p(d.getHours()) + p(d.getMinutes()) + '.xls';
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  setTimeout(function(){ URL.revokeObjectURL(url); }, 1000);
+  toast('已导出 ' + rows.length + ' 条资源（Excel）');
+}
+
+/* 导出按钮：弹出格式选择（Excel / CSV） */
+function openExportPicker(){
+  var host = $('#layerHost');
+  if(!host) return;
+  var cur = (typeof VIEW !== 'undefined' && VIEW && VIEW.length) ? VIEW : (ROWS || []);
+  host.innerHTML = '<div class="scrim" data-close="1"></div>'
+    + '<div class="modal" style="width:min(400px,calc(100vw - 32px))">'
+    + '<div class="modal-head">导出硬件台账</div>'
+    + '<div class="modal-body">'
+    + '<p style="margin:0 0 14px;font-size:var(--text-sm);color:var(--text-secondary)">请选择导出格式（导出当前筛选范围内 ' + cur.length + ' 条）：</p>'
+    + '<div style="display:flex;gap:10px">'
+    + '<button class="btn btn-primary" id="exPickXls" style="flex:1">Excel（.xls）</button>'
+    + '<button class="btn btn-secondary" id="exPickCsv" style="flex:1">CSV</button>'
+    + '</div>'
+    + '<p style="margin:12px 0 0;font-size:var(--text-xs);color:var(--text-tertiary)">Excel 支持表头与「离线」加粗；CSV 便于二次编辑与回导。</p>'
+    + '</div></div>';
+  var bx = $('#exPickXls'), bc = $('#exPickCsv');
+  if(bx) bx.onclick = function(){ closeLayer(); exportPhyExcel(); };
+  if(bc) bc.onclick = function(){ closeLayer(); exportPhyCsv(); };
 }
 
 /* ===================== 抽屉：详情 ===================== */
@@ -1622,7 +1679,7 @@ $('#btnMine').addEventListener('click', function(){ ONLY_FOLLOW = !ONLY_FOLLOW; 
 var btnRefresh = $('#btnRefresh');
 if(btnRefresh) btnRefresh.addEventListener('click', function(){ load().then(function(){ toast('已刷新','ok'); }); });
 $('#btnNew').addEventListener('click', function(){ openEdit(null); });
-$('#btnExport').addEventListener('click', exportPhyCsv);
+$('#btnExport').addEventListener('click', openExportPicker);
 $('#btnImport').addEventListener('click', openImport);
 $('#btnImportTpl').addEventListener('click', downloadPhyTemplate);
 

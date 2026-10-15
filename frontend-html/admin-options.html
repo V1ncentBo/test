@@ -412,10 +412,10 @@ select.rc-inp{height:38px;appearance:none;-webkit-appearance:none;background-ima
         <div class="rc-field"><label>机器类型</label><input class="rc-inp" id="em_type" placeholder="宿主机 / 容器 / 中间件"></div>
       </div>
       <div class="rc-form2">
-        <div class="rc-field"><label>登录账号</label><input class="rc-inp" id="em_account" placeholder="root" autocomplete="off" name="em_account"></div>
+        <div class="rc-field"><label>登录账号</label><input class="rc-inp" id="em_account" placeholder="root" autocomplete="off"></div>
         <div class="rc-field"><label>登录密码</label>
           <div class="rc-inp-wrap">
-            <input class="rc-inp" id="em_password" type="password" placeholder="留空则不修改" autocomplete="new-password" name="em_password">
+            <input class="rc-inp" id="em_password" type="password" placeholder="留空则不修改" autocomplete="new-password" readonly onfocus="this.removeAttribute('readonly')">
             <button class="rc-inp-eye" id="em_pw_eye" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="3"/></svg></button>
           </div>
         </div>
@@ -432,8 +432,8 @@ select.rc-inp{height:38px;appearance:none;-webkit-appearance:none;background-ima
       </div>
     </div>
     <div class="rc-modal-foot">
-      <button class="rc-btn" data-closemodal="1">取消</button>
-      <button class="rc-btn rc-btn-p" id="em_save">保存</button>
+      <button type="button" class="rc-btn" data-closemodal="1">取消</button>
+      <button type="button" class="rc-btn rc-btn-p" id="em_save">保存</button>
     </div>
   </div>
 </div>
@@ -456,6 +456,21 @@ select.rc-inp{height:38px;appearance:none;-webkit-appearance:none;background-ima
     <div class="rc-modal-foot">
       <button class="rc-btn" data-closeimport="1">取消</button>
       <button class="rc-btn rc-btn-p" id="im_go">开始导入</button>
+    </div>
+  </div>
+</div>
+
+<div class="rc-modal" id="rcExportModal" style="display:none">
+  <div class="rc-modal-mask" data-closeexport="1"></div>
+  <div class="rc-modal-box" style="width:400px">
+    <div class="rc-modal-head">导出资源台账<span class="rc-modal-x" data-closeexport="1">×</span></div>
+    <div class="rc-modal-body">
+      <p style="margin:0;font-size:13px;color:var(--n500)">请选择导出格式（导出当前筛选范围内 <b id="rcExCount">0</b> 条）：</p>
+      <div style="display:flex;gap:10px">
+        <button class="rc-btn rc-btn-p" id="rc-ex-xls" style="flex:1;justify-content:center">Excel（.xls）</button>
+        <button class="rc-btn rc-btn-ghost" id="rc-ex-csv" style="flex:1;justify-content:center">CSV</button>
+      </div>
+      <p style="margin:0;font-size:12px;color:var(--n400)">Excel 支持表头与「离线」加粗；CSV 便于二次编辑与回导。</p>
     </div>
   </div>
 </div>
@@ -629,7 +644,7 @@ function renderToolbar(){
       +'<select class="rc-inp" id="rc-owner-filter" style="width:105px;flex:none" title="按负责人筛选">'+ofOpts+'</select>'
       +'<select class="rc-inp" id="rc-status-filter" style="width:100px;flex:none" title="按状态筛选">'+stOpts+'</select>'
       +'<select class="rc-inp" id="rc-phy-filter" style="width:130px;flex:none" title="按所属物理机分类">'+phyOpts+'</select>'
-      +'<button class="rc-btn-ghost" id="btn-export">导出 CSV</button>'
+      +'<button class="rc-btn-ghost" id="btn-export">导出</button>'
       +'<button class="rc-btn-ghost" id="btn-import">批量导入</button>'
       +'<button class="rc-btn-ghost" id="btn-import-tpl">下载模板</button>'
       +'<button class="rc-btn rc-btn-p" id="btn-new">新增资源</button>'
@@ -922,16 +937,17 @@ function renderRes(m){
   }
 }
 
-/* ============ 资源台账：导出 CSV ============ */
+/* ============ 资源台账：导出（格式可选：Excel 带样式 / CSV 可编辑回导） ============ */
+var RES_STATUS_ZH=function(s){return s==='online'?'在线':s==='offline'?'离线':s==='maintenance'?'维护中':(s||'')};
+var RES_HEADERS=['序号','名称','IP','所属物理机','所属机房机柜','项目','负责人','状态','账号'];
 function exportResCsv(){
   if(typeof RES==='undefined'||!RES.length){toast('暂无资源可导出');return}
   var rows=computeResRows();
-  var headers=['名称','IP','所属物理机','所属机房机柜','项目','负责人','状态','账号'];
-  var statusZh=function(s){return s==='online'?'在线':s==='offline'?'离线':s==='maintenance'?'维护中':(s||'')};
+  if(!rows.length){toast('暂无资源可导出');return}
   var cell=function(v){v=v==null?'':String(v);return /[",\r\n]/.test(v)?'"'+v.replace(/"/g,'""')+'"':v};
-  var lines=[headers.map(cell).join(',')];
-  rows.forEach(function(r){
-    lines.push([r.name,r.ip,r.phyName,r.phyLoc,r.proj,r.owner,statusZh(r.status),r.account].map(cell).join(','));
+  var lines=[RES_HEADERS.map(cell).join(',')];
+  rows.forEach(function(r,i){
+    lines.push([String(i+1),r.name,r.ip,r.phyName,r.phyLoc,r.proj,r.owner,RES_STATUS_ZH(r.status),r.account].map(cell).join(','));
   });
   var csv='\ufeff'+lines.join('\r\n');
   var blob=new Blob([csv],{type:'text/csv;charset=utf-8'});
@@ -941,7 +957,43 @@ function exportResCsv(){
   a.href=url;a.download='资源台账-'+d.getFullYear()+p(d.getMonth()+1)+p(d.getDate())+'-'+p(d.getHours())+p(d.getMinutes())+'.csv';
   document.body.appendChild(a);a.click();document.body.removeChild(a);
   setTimeout(function(){URL.revokeObjectURL(url);},1000);
-  toast('已导出 '+rows.length+' 条资源');
+  toast('已导出 '+rows.length+' 条资源（CSV）');
+}
+/* 导出 Excel（.xls，HTML 表格，表头与「离线」加粗） */
+function exportResXls(){
+  if(typeof RES==='undefined'||!RES.length){toast('暂无资源可导出');return}
+  var rows=computeResRows();
+  if(!rows.length){toast('暂无资源可导出');return}
+  var ex=function(v){return String(v==null?'':v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')};
+  var thStyle='border:1px solid #b0b7c3;background:#eef2f7;font-weight:bold;padding:5px 10px;white-space:nowrap';
+  var tdStyle='border:1px solid #b0b7c3;padding:5px 10px;vertical-align:middle';
+  var head='<tr>'+RES_HEADERS.map(function(h){return '<th style="'+thStyle+'">'+ex(h)+'</th>'}).join('')+'</tr>';
+  var body=rows.map(function(r,i){
+    var st=RES_STATUS_ZH(r.status);
+    var stHtml=(r.status==='offline'||st==='离线')?'<b>'+ex(st)+'</b>':ex(st);
+    var vals=[String(i+1),r.name,r.ip,r.phyName,r.phyLoc,r.proj,r.owner,null,r.account];
+    var tds=vals.map(function(v,idx){
+      if(idx===7)return '<td style="'+tdStyle+'">'+stHtml+'</td>';
+      return '<td style="'+tdStyle+'">'+ex(v)+'</td>';
+    }).join('');
+    return '<tr>'+tds+'</tr>';
+  }).join('');
+  var html='<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40"><head><meta charset="utf-8"><!--[if gte mso 9]><xml><x:ExcelWorkbook><x:ExcelWorksheets><x:ExcelWorksheet><x:Name>资源台账</x:Name><x:WorksheetOptions><x:DisplayGridlines/></x:WorksheetOptions></x:ExcelWorksheet></x:ExcelWorksheets></x:ExcelWorkbook></xml><![endif]--></head><body><table style="border-collapse:collapse;font-family:\'Microsoft YaHei\',Arial,sans-serif;font-size:13px"><thead>'+head+'</thead><tbody>'+body+'</tbody></table></body></html>';
+  var blob=new Blob(['\ufeff'+html],{type:'application/vnd.ms-excel;charset=utf-8'});
+  var url=URL.createObjectURL(blob);
+  var a=document.createElement('a');
+  var d=new Date(),p=function(n){return n<10?'0'+n:n};
+  a.href=url;a.download='资源台账-'+d.getFullYear()+p(d.getMonth()+1)+p(d.getDate())+'-'+p(d.getHours())+p(d.getMinutes())+'.xls';
+  document.body.appendChild(a);a.click();document.body.removeChild(a);
+  setTimeout(function(){URL.revokeObjectURL(url);},1000);
+  toast('已导出 '+rows.length+' 条资源（Excel）');
+}
+/* 导出按钮：弹出格式选择（Excel / CSV） */
+function openResExportPicker(){
+  var rows=computeResRows();
+  if(!rows.length){toast('暂无资源可导出');return}
+  var cnt=document.getElementById('rcExCount'); if(cnt)cnt.textContent=rows.length;
+  document.getElementById('rcExportModal').style.display='flex';
 }
 
 /* ============ 机房管理 ============ */
@@ -1392,6 +1444,10 @@ document.addEventListener('click',function(e){
   if(t.closest('[data-closemodal]')){document.getElementById('rcModal').style.display='none';return}
   // 批量导入弹窗：关闭
   if(t.closest('[data-closeimport]')){document.getElementById('rcImportModal').style.display='none';return}
+  // 导出格式选择弹窗：关闭 / 选择格式
+  if(t.closest('[data-closeexport]')){document.getElementById('rcExportModal').style.display='none';return}
+  if(t.closest('#rc-ex-xls')){document.getElementById('rcExportModal').style.display='none';exportResXls();return}
+  if(t.closest('#rc-ex-csv')){document.getElementById('rcExportModal').style.display='none';exportResCsv();return}
   // 通用添加弹窗：关闭
   if(t.closest('[data-closeadd]')){document.getElementById('rcAddModal').style.display='none';return}
   // 机房管理 / 项目 / 负责人：打开添加弹窗
@@ -1433,7 +1489,7 @@ document.addEventListener('click',function(e){
   if(t.closest('#btn-import')){document.getElementById('rcImportModal').style.display='flex';return}
   // 资源台账：下载批量导入模板
   if(t.closest('#btn-import-tpl')){downloadResTemplate();return}
-  if(t.closest('#btn-export')){exportResCsv();return}
+  if(t.closest('#btn-export')){openResExportPicker();return}
   // 批量导入：开始导入
   if(t.closest('#im_go')){
     var imBtn=t.closest('#im_go');

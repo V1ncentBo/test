@@ -1103,3 +1103,94 @@ html[data-mc-dg-ok] .main-area .deploy-guide > section.guide-section{display:non
 .main-area .mcs-cell.mcs-empty .mcs-v{color:var(--mc-text-3)}
 @media (max-width:1023px){.main-area .mcs-grid{grid-template-columns:repeat(3,minmax(0,1fr))}}
 @media (max-width:767px){.main-area .mcs-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+
+/* ══ MC-PREMIUM 2026-10-15 「高级感」增量：流光描边 + 玻璃拟态 ══
+ * 原则：克制、统一白底。默认极淡流光（5s 慢速），hover 提亮加速；
+ * prefers-reduced-motion 下完全关闭。复用现有 --mc-* 与每卡 --bar 语义色，
+ * 零新增 token、零 JS、零结构改动，仅作用于 .stat-card 顶卡（监控总览/设备管理/告警日志）。 */
+@property --mc-glow { syntax: '<angle>'; inherits: false; initial-value: 0deg; }
+.main-area .stat-card::before {
+  content: ""; position: absolute; inset: 0; border-radius: inherit;
+  padding: 1.5px;
+  background: conic-gradient(from var(--mc-glow),
+    transparent 0%, var(--bar, var(--mc-bar-1)) 14%, transparent 38%,
+    transparent 60%, color-mix(in srgb, var(--bar, var(--mc-bar-1)) 32%, transparent) 80%, transparent 100%);
+  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+          mask-composite: exclude;
+  opacity: .45; transition: opacity .25s ease;
+  animation: mcGlow 5s linear infinite; pointer-events: none;
+}
+.main-area .stat-card:hover::before { opacity: 1; animation-duration: 1.4s; }
+@keyframes mcGlow { to { --mc-glow: 360deg; } }
+@media (prefers-reduced-motion: reduce) {
+  .main-area .stat-card::before { animation: none !important; opacity: 0 !important; }
+}
+
+/* 玻璃拟态工具类（供悬浮层/抽屉使用，克制；亮暗主题自适应） */
+.glass {
+  background: rgba(255,255,255,.72);
+  backdrop-filter: blur(12px) saturate(160%);
+  -webkit-backdrop-filter: blur(12px) saturate(160%);
+  border: 1px solid var(--mc-border, rgba(16,24,40,.08));
+}
+[data-theme="dark"] .glass {
+  background: rgba(15,22,35,.72);
+  border-color: var(--mc-border, rgba(255,255,255,.08));
+}
+
+/* ══ MC-PREMIUM-BENTO 2026-10-15 资源总览 Bento 化 ══
+ * 仅覆盖 /u/admin-options 注入页：统计卡 + 三列改 12 列不等宽拼图；
+ * .rc-stat 补流光描边（延续 MC-PREMIUM，色取每卡 --bar 语义色）。
+ * 不改 admin-options.html（原生静态页），零 JS 零结构改动。 */
+.main-area .rc-stats { grid-template-columns: repeat(12, 1fr) !important; gap: 14px !important; }
+.main-area .rc-stats .rc-stat:nth-child(1) { grid-column: span 4 !important; }
+.main-area .rc-stats .rc-stat:nth-child(2) { grid-column: span 3 !important; }
+.main-area .rc-stats .rc-stat:nth-child(3) { grid-column: span 3 !important; }
+.main-area .rc-stats .rc-stat:nth-child(4) { grid-column: span 2 !important; }
+.main-area .ov3 { grid-template-columns: repeat(12, 1fr) !important; gap: 14px !important; }
+.main-area .ov3 .ov-card:nth-child(1) { grid-column: span 5 !important; }
+.main-area .ov3 .ov-card:nth-child(2) { grid-column: span 3 !important; }
+.main-area .ov3 .ov-card:nth-child(3) { grid-column: span 4 !important; }
+/* 统计卡流光描边（延续 MC-PREMIUM，色取每卡 --bar 语义色） */
+.main-area .rc-stat::before {
+  content: ""; position: absolute; inset: 0; border-radius: inherit;
+  padding: 1.5px;
+  background: conic-gradient(from var(--mc-glow),
+    transparent 0%, var(--bar, var(--mc-bar-1)) 14%, transparent 38%,
+    transparent 60%, color-mix(in srgb, var(--bar, var(--mc-bar-1)) 32%, transparent) 80%, transparent 100%);
+  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor; mask-composite: exclude;
+  opacity: .4; transition: opacity .25s ease;
+  animation: mcGlow 5s linear infinite; pointer-events: none;
+}
+.main-area .rc-stat:hover::before { opacity: 1; animation-duration: 1.4s; }
+@media (max-width: 1100px) {
+  .main-area .rc-stats .rc-stat { grid-column: span 6 !important; }
+  .main-area .ov3 .ov-card { grid-column: span 12 !important; }
+}
+@media (max-width: 640px) {
+  .main-area .rc-stats .rc-stat { grid-column: span 12 !important; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .main-area .rc-stat::before { animation: none !important; opacity: 0 !important; }
+}
+
+/* ══ MC-PREMIUM-STAT 2026-10-15 数据库 / 硬件台账卡片流光描边 ══
+ * 这两页顶卡用 .stat（physical.html / db-monitor.html，同构卡片：position:relative + overflow:hidden
+ * + ::after 左色条 + 内联 --bar），补上与 .stat-card/.rc-stat 一致的流光。 */
+.main-area .stat::before {
+  content: ""; position: absolute; inset: 0; border-radius: inherit;
+  padding: 1.5px;
+  background: conic-gradient(from var(--mc-glow),
+    transparent 0%, var(--bar, var(--mc-bar-1)) 14%, transparent 38%,
+    transparent 60%, color-mix(in srgb, var(--bar, var(--mc-bar-1)) 32%, transparent) 80%, transparent 100%);
+  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor; mask-composite: exclude;
+  opacity: .4; transition: opacity .25s ease;
+  animation: mcGlow 5s linear infinite; pointer-events: none;
+}
+.main-area .stat:hover::before { opacity: 1; animation-duration: 1.4s; }
+@media (prefers-reduced-motion: reduce) {
+  .main-area .stat::before { animation: none !important; opacity: 0 !important; }
+}

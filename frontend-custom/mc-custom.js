@@ -356,22 +356,34 @@
     }
     function ensureMcSub() {
       var ref = document.getElementById('res-cmdb-sub') || devItem();
-      if (!ref || document.getElementById('mc-parent')) return;
-      var p = document.createElement('a');
-      p.className = 'nav-item mc-parent'; p.id = 'mc-parent'; p.href = 'javascript:void(0)';
-      p.innerHTML = '<span class="nav-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg></span><span class="nav-label">监控中心</span><span class="rc-arrow"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg></span><span class="nav-active-bar"></span>';
-      p.dataset.perm = 'machines';
-      p.onclick = function (e) { e.preventDefault(); e.stopPropagation(); _mcOpen = !_mcOpen; applyMcOpen(); };
-      ref.insertAdjacentElement('beforebegin', p);
-      var prev = p;
+      if (!ref) return;
+      var p = document.getElementById('mc-parent');
+      if (!p) {
+        p = document.createElement('a');
+        p.className = 'nav-item mc-parent'; p.id = 'mc-parent'; p.href = 'javascript:void(0)';
+        p.innerHTML = '<span class="nav-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg></span><span class="nav-label">监控中心</span><span class="rc-arrow"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg></span><span class="nav-active-bar"></span>';
+        p.dataset.perm = 'machines';
+        p.onclick = function (e) { e.preventDefault(); e.stopPropagation(); _mcOpen = !_mcOpen; applyMcOpen(); };
+        ref.insertAdjacentElement('beforebegin', p);
+      }
+      /* ⭐ 2026-10-19：**父级已存在时也要逐个补齐子项**。
+         旧实现是 `if (document.getElementById('mc-parent')) return;` —— Vue 重渲染很可能
+         只删掉 .mc-sub 子项、却保留 #mc-parent，于是整段 return ⇒ 子项永远补不回来，
+         表现为「监控中心」只剩一个空壳父级（用户：首次打开不显示，刷新一次才有）。
+         资源管理那边（ensureRcSubs）本来就是逐个补齐，所以不会出这个问题。 */
+      var anchor = p;
       MC_SUBS.forEach(function (s) {
+        var id = 'mc-sub-' + s.k;
+        var ex = document.getElementById(id);
+        if (ex) { anchor = ex; return; }
         var c = document.createElement('a');
-        c.className = 'nav-item mc-sub'; c.id = 'mc-sub-' + s.k; c.href = 'javascript:void(0)';
+        c.className = 'nav-item mc-sub'; c.id = id; c.href = 'javascript:void(0)';
         c.innerHTML = '<span class="nav-label">' + s.label + '</span>';
         if (s.perm) c.dataset.perm = s.perm;
         c.onclick = function (e) { e.preventDefault(); e.stopPropagation(); if (s.page) { switchTo(s.page); } else { goRoute(s.route); } };
-        prev.insertAdjacentElement('afterend', c);
-        prev = c;
+        c.style.display = _mcOpen ? 'flex' : 'none';
+        anchor.insertAdjacentElement('afterend', c);
+        anchor = c;
       });
       applyMcOpen();
     }
@@ -947,12 +959,22 @@
        下面这个 1s 巡检做两件事：① nav 节点身份变了就重挂观察器；② 关键锚点缺失就重跑注入链。
        代价极低（仅 3 次 getElementById），且天然覆盖 Vue 任意次重渲染。 */
     var _sideNavRef = null;
+    function sideIntegrity() {
+      /* 只查 2 个锚点不够：Vue 重渲染可能只删掉「子项」而留下父级，
+         导致「监控中心 / 资源管理」展开后是空壳（用户看到"没展示出来"）。
+         这里同时校验锚点 + 子项数量，任一不足即视为被抹，立刻补回。 */
+      if (!document.getElementById('mc-parent')) return false;
+      if (!document.getElementById('res-cmdb-sub')) return false;
+      if (document.querySelectorAll('.sidebar-nav .mc-sub').length < MC_SUBS.length) return false;
+      if (document.querySelectorAll('.sidebar-nav .rc-sub').length < RC_SUBS.length) return false;
+      return true;
+    }
     function maintainSide() {
       var nav = document.querySelector('.sidebar-nav');
       if (!nav) return;
       if (nav !== _sideNavRef) { _sideNavRef = nav; watchSide(); }
-      // 关键锚点缺失 ⇒ Vue 抹掉了注入 ⇒ 立刻补回（injectSide 幂等）
-      if (!document.getElementById('mc-parent') || !document.getElementById('res-cmdb-sub')) injectSide();
+      // 完整性不足 ⇒ Vue 抹掉了注入 ⇒ 立刻补回（injectSide 幂等）
+      if (!sideIntegrity()) injectSide();
     }
     function watchSide() {
       if (_obsSide) { try { _obsSide.disconnect(); } catch(e) {} }
@@ -974,8 +996,8 @@
         injectSide(); watchMain(); watchSide(); refreshRcCounts();
         fetchMe(function (st) { ensureAcctWidget(); maybeDeepLink(); });
         syncMcActive(); setTimeout(syncMcActive, 600);
-        // 自愈巡检：1s 间隔，仅在锚点缺失时真干活
-        setInterval(maintainSide, 1000);
+        // 自愈巡检：600ms 间隔（原 1s），仅在完整性不足时真干活；首发加载被 Vue 抹掉后 ~1s 内补回
+        setInterval(maintainSide, 600);
       }
       else if (_t++ < 300) setTimeout(boot, 250);
     })();

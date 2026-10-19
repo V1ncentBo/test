@@ -151,17 +151,17 @@ button,input,select,textarea{font:inherit;color:inherit}
 .page-desc{font-size:var(--text-xs);color:var(--text-secondary);margin:2px 0 0}
 
 /* ---------- Stats ---------- */
-.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));
-  gap:var(--space-4);margin-bottom:var(--space-5)}
+/* 2026-10-19：grid → flex（grid 的 1fr 隐含 auto 下限，长副标题会撑宽所在列） */
+.stats{display:flex;flex-wrap:wrap;gap:var(--space-4);margin-bottom:var(--space-5)}
 .stat{
   background:var(--surface-raised);border:1px solid var(--border-subtle);
   border-radius:var(--radius-lg);box-shadow:var(--shadow-card);padding:var(--space-5);
-  position:relative;overflow:hidden;
+  position:relative;overflow:hidden;min-width:0;min-height:150px;flex:1 1 200px;
 }
 .stat::after{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--bar,transparent)}
 .stat-k{font-size:var(--text-2xs);font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--text-secondary)}
 .stat-v{font-size:var(--text-3xl);font-weight:700;line-height:1.1;margin-top:var(--space-2);letter-spacing:-.02em}
-.stat-x{font-size:var(--text-2xs);color:var(--text-tertiary);margin-top:2px}
+.stat-x{font-size:var(--text-2xs);color:var(--text-tertiary);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 
 /* ---------- Toolbar ---------- */
 .toolbar{display:flex;gap:var(--space-3);align-items:center;flex-wrap:wrap;margin-bottom:var(--space-4)}

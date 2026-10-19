@@ -10,6 +10,7 @@ import time
 from datetime import datetime, timedelta
 
 from models.database import init_db, SessionLocal, MachineInfo, AlertLog, AIAnalysisLog
+from models.resource_cmdb import ResourceItem  # EXPIRY-20261019：物理台账到期扫描
 import models.resource_cmdb
 from routers import machines, metrics, alerts, ai, auth, register_node
 from routers import settings, report_schedule, ai_settings, advanced_routes, batch1_routes
@@ -76,6 +77,10 @@ async def lifespan(app: FastAPI):
     # 启动数据库只读采集器（MySQL / ES 等，仅读不写，周期写入 db_metrics）
     asyncio.create_task(db_collector())
     print(f"[{datetime.now()}] 数据库采集任务已启动")
+
+    # EXPIRY-20261019：物理机台账「到期」扫描（≤30 天 / 已过期 → 写告警并实时广播）
+    asyncio.create_task(expiry_scanner())
+    print(f"[{datetime.now()}] 到期扫描任务已启动")
 
     yield
 
@@ -774,6 +779,81 @@ app.include_router(resource_cmdb_router)
 app.include_router(dbs_router)
 # 运维文件库（资源管理第 7 项）：镜像/服务包 上传下载审计
 app.include_router(files_router)
+
+
+# ══ EXPIRY-20261019：物理机台账「到期」扫描 ═══════════════════════════════════
+async def expiry_scanner():
+    """每 6 小时扫描一次物理机台账的 expire_at：
+       · 已过期 / 30 天内到期 → 写 alert_log（alert_type='expiry'）
+       · 同一资源每天最多一条未解决告警（metric_name='expire:<资源id>'）→ 天然去重
+       · 新告警经 ws_manager 实时广播（告警中心 / 大屏可见）
+    说明：resource_items.expire_at 是 varchar('YYYY-MM-DD')，解析失败的行直接跳过。
+    """
+    from datetime import date as _date
+    await asyncio.sleep(40)   # 等其它采集器先起，避免启动瞬间抢连接池
+    while True:
+        created = 0
+        try:
+            db = SessionLocal()
+            try:
+                rows = db.query(ResourceItem).filter(
+                    ResourceItem.category == "physical",
+                    ResourceItem.expire_at.isnot(None),
+                ).all()
+                today = _date.today()
+                day_start = datetime.combine(today, datetime.min.time())
+                for r in rows:
+                    raw = str(r.expire_at or "").strip()[:10]
+                    if len(raw) < 10:
+                        continue
+                    try:
+                        exp = datetime.strptime(raw, "%Y-%m-%d").date()
+                    except Exception:
+                        continue
+                    days = (exp - today).days
+                    if days > 30:
+                        continue
+                    metric = "expire:%s" % r.id
+                    dup = db.query(AlertLog).filter(
+                        AlertLog.alert_type == "expiry",
+                        AlertLog.metric_name == metric,
+                        AlertLog.status == "unresolved",
+                        AlertLog.created_at >= day_start,
+                    ).first()
+                    if dup:
+                        continue
+                    level = "critical" if days < 0 else "warning"
+                    if days < 0:
+                        msg = "【已过期】%s 到期日 %s，已过期 %d 天（负责人：%s）" % (r.name, raw, -days, r.owner or "—")
+                    else:
+                        msg = "【即将到期】%s 将于 %s 到期，剩余 %d 天（负责人：%s）" % (r.name, raw, days, r.owner or "—")
+                    db.add(alert_service._make_alert(
+                        db, r.machine_id or 0, "expiry", level,
+                        "expire_at", float(days), 30.0, msg))
+                    created += 1
+                if created:
+                    db.commit()
+                    fresh = db.query(AlertLog).filter(
+                        AlertLog.alert_type == "expiry",
+                        AlertLog.status == "unresolved",
+                        AlertLog.created_at >= day_start,
+                    ).limit(50).all()
+                    for a in fresh:
+                        try:
+                            await ws_manager.broadcast_alert({
+                                "id": a.id, "machine_id": a.machine_id,
+                                "alert_type": a.alert_type, "alert_level": a.alert_level,
+                                "message": a.message,
+                                "created_at": a.created_at.isoformat() if a.created_at else "",
+                            })
+                        except Exception:
+                            pass
+                    print(f"[ExpiryScanner] 新增到期告警 {created} 条")
+            finally:
+                db.close()
+        except Exception as e:
+            print(f"[ExpiryScanner] 扫描异常: {e}")
+        await asyncio.sleep(6 * 3600)
 
 
 @app.get("/api/install-agent.sh")

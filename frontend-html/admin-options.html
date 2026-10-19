@@ -39,7 +39,9 @@
 .rc-desc b{color:var(--navy-800)}
 
 /* 统计卡片（观感/动画与「硬件台账」页面 .stats/.stat 对齐：左色条 + 图标 tile + 大号等宽数字） */
-.rc-stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:16px;margin-bottom:18px}
+/* 2026-10-19：grid → flex —— grid 的 `1fr` 隐含 auto 下限，长副标题会撑宽所在列
+   （实测 432/321/321/209）。flex:1 1 200px 让所有卡片严格等宽，窄屏自动换行。 */
+.rc-stats{display:flex;flex-wrap:wrap;gap:16px;margin-bottom:18px}
 /* 概览底部简略数据条（替代原 4 张大卡片） */
 .rc-brief{display:flex;flex-wrap:wrap;gap:10px;margin-top:2px}
 .rc-brief-it{display:inline-flex;align-items:baseline;gap:7px;background:var(--n50);border:1px solid var(--n200);border-radius:10px;padding:9px 15px;transition:border-color .15s,box-shadow .15s}
@@ -49,19 +51,24 @@
 .rc-stat{
   background:var(--n50);border:1px solid var(--n200);border-radius:14px;padding:20px;
   box-shadow:0 1px 2px rgba(16,24,40,.04);position:relative;overflow:hidden;
+  min-width:0;min-height:160px;flex:1 1 200px;   /* 2026-10-19：flex 等宽，内容长度不影响尺寸 */
   opacity:0;animation:rcStatFade .5s cubic-bezier(.16,1,.3,1) both;animation-delay:calc(var(--i,0)*.09s);
 }
 .rc-stat:hover{transform:translateY(-3px);box-shadow:0 8px 24px rgba(16,24,40,.10);transition:transform .2s,box-shadow .2s}
 .rc-stat::after{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--bar,transparent)}
 .rc-stat[data-jump]{cursor:pointer}
 .rc-stat[data-jump]:hover{border-color:var(--navy-700)}
+/* 2026-10-19：计数卡可点击筛选（再点取消） */
+.rc-stat[data-filter]{cursor:pointer}
+.rc-stat[data-filter]:hover{border-color:var(--navy-700)}
+.rc-stat.on{border-color:var(--navy-700);box-shadow:0 0 0 3px color-mix(in srgb,var(--navy-700) 14%,transparent)}
 @keyframes rcStatFade{from{opacity:0}to{opacity:1}}
 @media(prefers-reduced-motion:reduce){.rc-stat{animation:none;opacity:1}}
 .rc-stat-ico{display:inline-flex;width:30px;height:30px;border-radius:9px;align-items:center;justify-content:center;margin-bottom:10px;background:color-mix(in srgb,currentColor 13%,transparent)}
 .rc-stat-ico svg{width:17px;height:17px}
 .rc-stat-k{font-size:11px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--n500)}
 .rc-stat-v{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:32px;font-weight:700;line-height:1.1;margin-top:8px;letter-spacing:-.02em;color:var(--n900)}
-.rc-stat-x{font-size:11px;color:var(--n400);margin-top:2px}
+.rc-stat-x{font-size:11px;color:var(--n400);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis} /* 单行省略：内容长短不再影响卡片高度 */
 .rc-stat-x .on{color:var(--g600);font-weight:600}
 .rc-stat-x .off{color:var(--r600);font-weight:600}
 .rc-stat-x .warn{color:var(--a600);font-weight:600}
@@ -687,9 +694,11 @@ function renderStatCards(list){
     var bar=c.bar||'var(--n300)';
     var hasNum=(c.num!=null && c.num!=='' && !isNaN(parseInt(c.num,10)));
     var vTxt=(c.v==null)?'—':String(c.v);   /* 注意：0 必须正常显示，不能走 esc() 的 ||'' 兜底 */
-    return '<div class="rc-stat"'
+    var isOn = !!c.filter && (c.filter === 'all' ? !_statusFilter : (c.filter === ('status:' + _statusFilter)));
+    return '<div class="rc-stat' + (isOn ? ' on' : '') + '"'
       + (hasNum?' data-cnt="'+parseInt(c.num,10)+'"':'')
       + (c.jump?' data-jump="'+esc(c.jump)+'" title="点击进入"':'')
+      + (c.filter?' data-filter="'+esc(c.filter)+'" title="点击筛选该分类"':'')
       + ' style="--bar:'+bar+';--i:'+i+'">'
       + '<span class="rc-stat-ico" style="color:'+bar+'">'+svg(c.ico||'')+'</span>'
       + '<div class="rc-stat-k">'+esc(String(c.k==null?'':c.k))+'</div>'
@@ -697,7 +706,7 @@ function renderStatCards(list){
       + '<div class="rc-stat-x">'+(c.x||'')+'</div>'
       + '</div>';
   }).join('');
-  return '<div class="rc-stats">'+cards+'</div>';
+  return '<div class="rc-stats">' + cards + '</div>';
 }
 /* 数字滚动：仅作用于带 data-cnt 的纯数字卡；650ms 三次缓出。重新渲染（innerHTML 重建）后自动重放 */
 function animateStats(root){
@@ -882,7 +891,10 @@ function renderResStats(){
       {k:isProj?'覆盖资源':'已指派', v:covered, num:covered, ico:IC.db, bar:'var(--navy-800)',
        x:'占资源台账 '+covPct+'%'},
       {k:isProj?'未分组':'未指定', v:unlinked, num:unlinked, ico:IC.host, bar:'var(--n500)',
-       x:unlinked>0?'待归类 / 待指派':'全部已归类'}
+       x:unlinked>0?'待归类 / 待指派':'全部已归类'},
+      /* 2026-10-19：补第 4 张，与资源总览/资源台账同为 4 张卡（宽度一致）；此页卡片不参与点击筛选 */
+      {k:'资源台账', v:RES.length, num:RES.length, ico:IC.db, bar:'var(--g600)',
+       x:isProj?'覆盖关系 '+covered+' 条':'指派关系 '+covered+' 条'}
     ]);
     animateStats(s);
     return;
@@ -897,9 +909,11 @@ function renderResStats(){
   });
   var onPct=RES.length?Math.round(on*100/RES.length):0;
   s.innerHTML=renderStatCards([
+    /* 2026-10-19：仅「在线 / 离线 / 维护中」可点击筛选；「登记资源」不参与 */
     {k:'登记资源', v:RES.length, num:RES.length, ico:IC.db, bar:'var(--navy-800)', x:'台账在管资源'},
-    {k:'在线', v:on, num:on, ico:IC.host, bar:'var(--g600)', x:'运行中 · 在线率 '+onPct+'%'},
-    {k:'离线 / 维护', v:off+' / '+mt, num:null, ico:IC.host, bar:'var(--n500)', x:'需关注'}
+    {k:'在线', v:on, num:on, ico:IC.host, bar:'var(--g600)', x:'运行中 · 在线率 '+onPct+'%', filter:'status:online'},
+    {k:'离线', v:off, num:off, ico:IC.host, bar:'var(--r600)', x:off>0?'需排查':'无离线资源', filter:'status:offline'},
+    {k:'维护中', v:mt, num:mt, ico:IC.host, bar:'var(--a600)', x:mt>0?'计划内维护':'无维护中资源', filter:'status:maintenance'}
   ]);
   animateStats(s);
 }
@@ -1440,6 +1454,17 @@ document.addEventListener('click',function(e){
   var dcs=t.closest('[data-close]');if(dcs){closeResLayer();return}
   var tb=t.closest('[data-tab]');if(tb){go(tb.dataset.tab);return}
   var j=t.closest('[data-jump]');if(j){var jk=j.dataset.jump;if(jk==='physical'){if(window.__INJECT_TO__){window.__INJECT_TO__('physical');}else{location.href='/physical.html';}return;}if(jk==='cabinets'){if(window.__INJECT_TO__){window.__INJECT_TO__('cabinets');}else{location.href='/cabinets.html';}return;}if(jk==='monitor'){if(window.__GO_ROUTE__){window.__GO_ROUTE__('/machines');}else{location.href='/machines';}return;}go(jk);return}
+  // 2026-10-19：统计卡点击 → 直接按该分类筛选（再点取消；「全部」清除筛选）
+  var cf=t.closest('[data-filter]');
+  if(cf){
+    var fv=cf.dataset.filter;
+    if(fv==='all'){ _statusFilter=''; }
+    else if(fv.indexOf('status:')===0){ var sv=fv.slice(7); _statusFilter=(_statusFilter===sv?'':sv); }
+    var sel=document.getElementById('rc-status-filter'); if(sel) sel.value=_statusFilter;
+    if(typeof renderResStats==='function') renderResStats();   /* 重渲染卡片以刷新激活态（renderBody 只重画列表） */
+    renderBody();
+    return;
+  }
   // 资源台账：关闭编辑弹窗
   if(t.closest('[data-closemodal]')){document.getElementById('rcModal').style.display='none';return}
   // 批量导入弹窗：关闭

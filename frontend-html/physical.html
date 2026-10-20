@@ -480,7 +480,7 @@ html.embed .content{padding:var(--space-5);max-width:none}
         </div>
         <select class="select" id="fStatus">
           <option value="">全部状态</option>
-          <option value="online" selected>在线</option>
+          <option value="online">在线</option>
           <option value="offline">离线</option>
           <option value="maintenance">维护中</option>
         </select>
@@ -930,10 +930,10 @@ function render(){
     tb.innerHTML = ''; cm.innerHTML = '';
     sb.innerHTML = '<div class="state">'
       + '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>'
-      + '<h3>没有匹配的资源</h3><p>'+($('#fStatus').value==='online'?'当前默认只显示「在线」资源，可切换状态查看离线 / 维护中':'试试调整搜索词或筛选条件')+'</p>'
+      + '<h3>没有匹配的资源</h3><p>试试调整筛选条件或清空搜索词</p>'
       + '<button class="btn btn-secondary" id="clr">清除筛选</button></div>';
     $('#clr').onclick = function(){
-      $('#q').value=''; $('#fStatus').value='online'; $('#fType').value=''; $('#fOwner').value='';
+      $('#q').value=''; $('#fStatus').value=''; $('#fType').value=''; $('#fOwner').value='';
       $('#fOffice').value=''; $('#fRoom').value=''; $('#fCab').value='';
       ONLY_FOLLOW=false; syncMineBtn();
       $('#fRoom').dispatchEvent(new Event('change')); // 联动恢复全部机柜 + 触发 render

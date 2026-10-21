@@ -1113,6 +1113,7 @@ function renderTags(m,k){
       +'<div class="chips">'+chips+'</div>'
       +'<div class="acts">'
       +'<button class="act view" data-viewtag="'+k+'" data-viewval="'+esc(it)+'" title="在资源台账中查看">'+svg(IC.search)+'查看资源</button>'
+      +'<button class="act edit" data-edittag="'+k+'" data-edittagval="'+esc(it)+'" title="重命名并同步更新关联资源">'+svg('<path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4z"/>')+'编辑</button>'
       +'<button class="act del" data-deltag="'+k+'" data-ix="'+ix+'">删除</button>'
       +'</div></div>';
   }).join('')+'</div>';
@@ -1188,8 +1189,10 @@ function openCreateRes(){
 }
 // 打开通用添加弹窗（pve=机房绑定 / proj=项目 / owner=负责人）
 var _addType=null;
+var _editOld=null;   /* 2026-10-21：非空 = 正在重命名（值=旧名称） */
 function openAdd(type){
   _addType=type;
+  _editOld=null;   /* 2026-10-21：非编辑模式 */
   var head=document.getElementById('rcAddHead');
   var body=document.getElementById('rcAddBody');
   if(type==='pve'){
@@ -1203,6 +1206,18 @@ function openAdd(type){
   }
   document.getElementById('rcAddModal').style.display='flex';
   var f=document.getElementById('ad_a');if(f)setTimeout(function(){try{f.focus()}catch(e){}},50);
+}
+/* 2026-10-21：重命名项目/负责人 —— 复用添加弹窗；保存时走 /options/rename（后端同步改资源） */
+function openEditTag(k, oldName){
+  _addType=k; _editOld=oldName;
+  var head=document.getElementById('rcAddHead');
+  var body=document.getElementById('rcAddBody');
+  head.textContent=(k==='proj'?'重命名项目':'重命名负责人');
+  body.innerHTML='<div class="rc-field"><label>'+(k==='proj'?'项目名称':'负责人姓名')+'</label>'
+    +'<input class="rc-inp" id="ad_a" value="'+esc(oldName)+'"></div>'
+    +'<p style="margin:10px 0 0;font-size:12px;line-height:1.6;color:var(--n500)">改名后会<b>同步更新所有关联资源</b>的归属，关联不会断。</p>';
+  document.getElementById('rcAddModal').style.display='flex';
+  var f=document.getElementById('ad_a');if(f)setTimeout(function(){try{f.focus();f.select()}catch(e){}},50);
 }
 // 解析批量导入文本
 function parseImport(text){
@@ -1500,6 +1515,20 @@ document.addEventListener('click',function(e){
       save({bindings:{pve_location:items,project_ip:(OPTS.bindings||{}).project_ip||[]},pve_hosts:h,locations:l},function(){document.getElementById('rcAddModal').style.display='none';go('pve')});
     }else{
       if(!av.trim()){toast('请输入','warn');return}
+      /* 2026-10-21：编辑模式 → 重命名（后端同步更新关联资源），而非新增 */
+      if(_editOld!==null){
+        var ov=_editOld, nv=av.trim(); _editOld=null;
+        if(nv===ov){document.getElementById('rcAddModal').style.display='none';return}
+        req(API+'/options/rename',{method:'PUT',body:{kind:_addType,old:ov,new:nv}})
+          .then(function(r){
+            load().then(function(){
+              toast('已改名，同步更新 '+(r.renamed||0)+' 条资源','ok');
+              document.getElementById('rcAddModal').style.display='none';
+              go(_addType);
+            });
+          }).catch(function(e){toast(e.message,'err')});
+        return;
+      }
       var arr=_addType==='proj'?(OPTS.projects||[]):(OPTS.owners||[]);
       if(arr.indexOf(av.trim())<0)arr.push(av.trim());
       var bd={};
@@ -1614,6 +1643,8 @@ document.addEventListener('click',function(e){
     save({bindings:{pve_location:newItems,project_ip:(OPTS.bindings||{}).project_ip||[]},pve_hosts:OPTS.pve_hosts||[],locations:OPTS.locations||[]},function(){go('pve')});
     return;
   }
+  // 2026-10-21：项目/负责人「编辑」→ 重命名弹窗
+  var et=t.closest('[data-edittag]');if(et){openEditTag(et.dataset.edittag, et.dataset.edittagval);return}
   var dt=t.closest('[data-deltag]');if(dt){if(!confirm('确定删除？'))return;var k=dt.dataset.deltag,ix=+dt.dataset.ix,arr=k==='proj'?(OPTS.projects||[]):k==='owner'?(OPTS.owners||[]):(OPTS.machine_types||[]);arr.splice(ix,1);var b={};if(k==='proj')b.projects=arr;else if(k==='owner')b.owners=arr;else b.machine_types=arr;save(b,function(){go(k)});return}
 });
 

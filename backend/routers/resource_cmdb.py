@@ -392,6 +392,65 @@ def update_options(body: OptionsBody):
     return {'ok': True, 'data': opts}
 
 
+# ══ RENAME-20261021：项目 / 负责人重命名（必须同步改写关联资源）═══════════════
+class RenameOptionBody(BaseModel):
+    kind: str      # 'proj' | 'owner'
+    old: str
+    new: str
+
+
+@router.put('/options/rename', summary='重命名项目/负责人并同步更新资源（仅管理员）',
+            dependencies=[Depends(require_admin)])
+def rename_option(body: RenameOptionBody, db: Session = Depends(get_db)):
+    """重命名项目/负责人，**并同步改写所有关联资源上的旧值**。
+
+    为什么必须同步：资源的归属信息存在 `resource_items.projects`(JSON 数组) /
+    `resource_items.owner`(字符串) 里，options 只是候选值列表。
+    只改 options 不改资源 ⇒ 资源仍指向旧名，卡片关联计数立刻变 0、筛选也查不到。
+    """
+    kind = (body.kind or '').strip()
+    old = (body.old or '').strip()
+    new = (body.new or '').strip()
+    if kind not in ('proj', 'owner'):
+        raise HTTPException(status_code=400, detail='kind 只能是 proj 或 owner')
+    if not old or not new:
+        raise HTTPException(status_code=400, detail='名称不能为空')
+    if old == new:
+        return {'ok': True, 'renamed': 0, 'unchanged': True}
+
+    opts = _load_options()
+    key = 'projects' if kind == 'proj' else 'owners'
+    arr = list(opts.get(key) or [])
+    if new in arr:
+        raise HTTPException(status_code=400, detail='目标名称已存在')
+    if old not in arr:
+        raise HTTPException(status_code=404, detail='原名称不存在')
+    opts[key] = [new if x == old else x for x in arr]
+    _save_options(opts)
+
+    renamed = 0
+    if kind == 'owner':
+        rows = db.query(ResourceItem).filter(ResourceItem.owner == old).all()
+        for r in rows:
+            r.owner = new
+            renamed += 1
+    else:
+        for r in db.query(ResourceItem).all():
+            ps = r.projects or []
+            if isinstance(ps, list) and old in ps:
+                # 去重：同一资源若已含新名，避免出现重复项
+                out = []
+                for p in ps:
+                    v = new if p == old else p
+                    if v not in out:
+                        out.append(v)
+                r.projects = out
+                flag_modified(r, 'projects')
+                renamed += 1
+    db.commit()
+    return {'ok': True, 'renamed': renamed, 'data': opts}
+
+
 # ---------------- 机房 / 机柜（U 位视图） ----------------
 def cabinet_to_dict(c: Cabinet, devices=None) -> dict:
     devices = devices or []

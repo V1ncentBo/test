@@ -230,6 +230,9 @@
 .rc-inp::placeholder{color:var(--n400)}
 .rc-inp:focus{outline:none;border-color:var(--navy-700);box-shadow:0 0 0 3px var(--navy-100)}
 select.rc-inp{height:38px;appearance:none;-webkit-appearance:none;background-image:url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%236b7280' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 12px center;padding-right:34px;cursor:pointer}
+/* 2026-10-22：input+datalist 也用同一枚 chevron（与硬件台账 #mOwner 完全一致，原样式只覆盖了 select） */
+input.rc-inp[list]{appearance:none;-webkit-appearance:none;background-image:url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%236b7280' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 12px center;background-size:14px 14px;padding-right:34px;cursor:pointer}
+input.rc-inp[list]::-webkit-calendar-picker-indicator{opacity:0;cursor:pointer}
 .rc-field{display:grid;gap:6px}
 /* REMARK-20261012：编辑/新增资源弹窗的「备注」多行输入框。
    ⚠ .rc-inp 设了 min-height:38px，单行高度对多行文本太矮，这里覆盖为可拉伸的多行。 */
@@ -407,15 +410,27 @@ select.rc-inp{height:38px;appearance:none;-webkit-appearance:none;background-ima
         <div class="rc-field"><label>本机 IP</label><input class="rc-inp" id="em_vm" placeholder="10.20.x.x"></div>
         <div class="rc-field">
           <label>父级物理机</label>
-          <select class="rc-inp" id="em_pve"><option value="">— 未关联 —</option></select>
+          <!-- 2026-10-22：改为可搜索（输入名称或 IP 均会过滤），留空 = 未关联 -->
+          <input class="rc-inp" id="em_pve" list="dl_pve" placeholder="输入名称/IP 搜索，留空=未关联" autocomplete="off">
+          <datalist id="dl_pve"></datalist>
         </div>
       </div>
       <div class="rc-form2">
         <div class="rc-field"><label>域名</label><input class="rc-inp" id="em_domain" placeholder="app.example.com"></div>
-        <div class="rc-field"><label>负责人</label><select class="rc-inp" id="em_owner"></select></div>
+        <div class="rc-field">
+          <label>负责人</label>
+          <!-- 2026-10-22：可搜索 + 可直接输入新增（保存时自动加入候选） -->
+          <input class="rc-inp" id="em_owner" list="dl_owner" placeholder="搜索或直接输入新增" autocomplete="off">
+          <datalist id="dl_owner"></datalist>
+        </div>
       </div>
       <div class="rc-form2">
-        <div class="rc-field"><label>项目</label><select class="rc-inp" id="em_proj"></select></div>
+        <div class="rc-field">
+          <label>项目</label>
+          <!-- 2026-10-22：可搜索 + 可直接输入新增（保存时自动加入候选） -->
+          <input class="rc-inp" id="em_proj" list="dl_proj" placeholder="搜索或直接输入新增" autocomplete="off">
+          <datalist id="dl_proj"></datalist>
+        </div>
         <div class="rc-field"><label>机器类型</label><input class="rc-inp" id="em_type" placeholder="宿主机 / 容器 / 中间件"></div>
       </div>
       <div class="rc-form2">
@@ -1121,27 +1136,33 @@ function renderTags(m,k){
 
 // 填充编辑弹窗的「负责人」「项目」下拉（选项来自 OPTS.owners / OPTS.projects）
 function fillSelectOptions(){
-  var ow=OPTS.owners||[];
+  /* 2026-10-22：候选人改为 datalist —— input 可输入搜索，也可直接输入新值 */
+  var ow=(OPTS.owners||[]).slice();
   var os=document.getElementById('em_owner');
   if(os){
     var curOwner=os.dataset.cur||'';
-    if(curOwner && ow.indexOf(curOwner)<0) ow=ow.concat([curOwner]);
-    os.innerHTML='<option value="">— 未指定 —</option>'+ow.map(function(o){return'<option value="'+esc(o)+'">'+esc(o)+'</option>'}).join('');
+    if(curOwner && ow.indexOf(curOwner)<0) ow.push(curOwner);
+    var dlo=document.getElementById('dl_owner');
+    if(dlo) dlo.innerHTML=ow.map(function(o){return '<option value="'+esc(o)+'"></option>'}).join('');
     os.value=curOwner;
   }
-  var pj=OPTS.projects||[];
+  var pj=(OPTS.projects||[]).slice();
   var ps=document.getElementById('em_proj');
   if(ps){
     var curProj=ps.dataset.cur||'';
-    if(curProj && pj.indexOf(curProj)<0) pj=pj.concat([curProj]);
-    ps.innerHTML='<option value="">— 未指定 —</option>'+pj.map(function(p){return'<option value="'+esc(p)+'">'+esc(p)+'</option>'}).join('');
+    if(curProj && pj.indexOf(curProj)<0) pj.push(curProj);
+    var dlp=document.getElementById('dl_proj');
+    if(dlp) dlp.innerHTML=pj.map(function(p){return '<option value="'+esc(p)+'"></option>'}).join('');
     ps.value=curProj;
   }
 }
 function fillPhySelect(curIp){
-  var sel=document.getElementById('em_pve');
-  if(!sel)return;
-  var html='<option value="">— 未关联 —</option>';
+  /* 2026-10-22：改为 datalist —— value 存 IP、label 显示「名称 (IP)」，
+     输入名称或 IP 均可过滤；留空 = 未关联。 */
+  var inp=document.getElementById('em_pve');
+  var dl=document.getElementById('dl_pve');
+  if(!inp||!dl)return;
+  var html='';
   (PHY||[]).forEach(function(p){
     var ip=p.pve_ip||''; if(!ip) return;
     html+='<option value="'+esc(ip)+'">'+esc(p.name||ip)+' ('+esc(ip)+')</option>';
@@ -1149,8 +1170,8 @@ function fillPhySelect(curIp){
   if(curIp && (PHY||[]).every(function(p){return (p.pve_ip||'')!==curIp})){
     html+='<option value="'+esc(curIp)+'">'+esc(curIp)+'（未关联物理机）</option>';
   }
-  sel.innerHTML=html;
-  sel.value=curIp||'';
+  dl.innerHTML=html;
+  inp.value=curIp||'';
 }
 // 打开编辑弹窗（按资源记录 id）
 function openEditRes(id){
@@ -1606,21 +1627,34 @@ document.addEventListener('click',function(e){
   // 资源台账：删除已移至详情抽屉（见 openConfirmRes）
   // 资源台账：保存编辑
   if(t.closest('#em_save')){
-    var ownIp=val('em_vm'), parentIp=val('em_pve');
+    var ownIp=val('em_vm');
+    /* 2026-10-22：父级物理机允许输入名称 → 兜底映射成 IP；映射不到则拦截 */
+    var parentRaw=(val('em_pve')||'').trim(), parentIp=parentRaw;
+    if(parentRaw && !/^\d{1,3}(\.\d{1,3}){3}$/.test(parentRaw)){
+      (PHY||[]).forEach(function(p){ if(parentIp===parentRaw && (p.name||'')===parentRaw && p.pve_ip) parentIp=p.pve_ip; });
+      if(parentIp===parentRaw){ toast('父级物理机请从下拉选择（或直接填 IP）','warn'); return; }
+    }
+    var owName=(val('em_owner')||'').trim();
+    var pjName=(val('em_proj')||'').trim();
     var body={
       name:val('em_name'),
       // 选了父级物理机：pve_ip=父级 IP、vm_ip=本机 IP；未选（自身即物理机）：本机 IP 落 pve_ip
       pve_ip:parentIp||ownIp, vm_ip:parentIp?ownIp:'',
       domain:val('em_domain'),
-      owner:val('em_owner'),projects:val('em_proj')?[val('em_proj')]:[],
+      owner:owName, projects:pjName?[pjName]:[],
       machine_type:val('em_type'),account:val('em_account'),password:val('em_password'),
       status:val('em_status')||'online',
       remark:val('em_remark')
     };
     if(!body.name){toast('资源名称不能为空','warn');return}
+    /* 2026-10-22：输入的负责人/项目若不在候选里 → 自动加入候选（下次可直接选） */
+    var addOpts={};
+    if(owName && (OPTS.owners||[]).indexOf(owName)<0) addOpts.owners=(OPTS.owners||[]).concat([owName]);
+    if(pjName && (OPTS.projects||[]).indexOf(pjName)<0) addOpts.projects=(OPTS.projects||[]).concat([pjName]);
+    var pre=(Object.keys(addOpts).length ? req(API+'/options',{method:'PUT',body:addOpts}).catch(function(){}) : Promise.resolve());
     var url=_editId?(API+'/resources/'+_editId):(API+'/resources');
     var method=_editId?'PUT':'POST';
-    req(url,{method:method,body:body}).then(function(){
+    pre.then(function(){ return req(url,{method:method,body:body}); }).then(function(){
       document.getElementById('rcModal').style.display='none';
       load().then(function(){ if(window.__RC_SET_COUNTS__)window.__RC_SET_COUNTS__(cnts()); go('resources'); toast(_editId?'已保存':'已新增','ok'); });
     }).catch(function(e){toast(e.message,'err')});return;

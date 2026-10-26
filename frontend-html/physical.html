@@ -331,6 +331,25 @@ tbody tr:last-child td{border-bottom:none}
 .f .req::after{content:" *";color:var(--danger)}
 textarea.input{resize:vertical;min-height:66px;font-family:inherit}
 
+/* ---------- 批量导入：预检表（模态内） ---------- */
+.im-sum{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin:10px 0 8px;font-size:var(--text-xs)}
+.im-pill{padding:2px 9px;border-radius:var(--radius-xl);background:var(--surface-overlay);
+  border:1px solid var(--border-subtle);font-weight:650;white-space:nowrap}
+.im-tb{max-height:min(56vh,440px);overflow:auto;border:1px solid var(--border-subtle);
+  border-radius:var(--radius-md);background:var(--surface-raised)}
+.im-tb table{font-size:var(--text-xs)}
+.im-tb thead th{position:sticky;top:0;z-index:1;padding:8px 10px;font-size:var(--text-2xs);
+  background:var(--surface-overlay)}
+.im-tb tbody td{padding:8px 10px;border-bottom:1px solid var(--border-subtle);vertical-align:top}
+.im-tb tbody tr{cursor:pointer}
+.im-tb tbody tr:last-child td{border-bottom:none}
+.im-tb tr.lv1{background:var(--warning-subtle)}
+.im-tb tr.lv2{background:var(--danger-subtle)}
+.im-tb tr.off{opacity:.55}
+/* 徽章底色与行底色同为 subtle 时会「隐身」⇒ 统一改用卡片底色 + 细边框，保留语义色文字 */
+.im-tb .badge{background:var(--surface-raised);border:1px solid var(--border-subtle)}
+.im-tip{display:block;font-size:var(--text-2xs);color:var(--text-secondary);margin-top:3px;line-height:1.5}
+
 /* ---------- Toast ---------- */
 .toasts{position:fixed;top:var(--space-5);right:var(--space-5);z-index:3000;
   display:flex;flex-direction:column;gap:var(--space-2)}
@@ -501,6 +520,10 @@ html.embed .content{padding:var(--space-5);max-width:none}
         <button class="btn btn-secondary" id="btnExport">导出</button>
         <button class="btn btn-secondary" id="btnImport" style="display:none">批量导入</button>
         <button class="btn btn-secondary" id="btnImportTpl" style="display:none">下载模板</button>
+        <button class="btn btn-secondary" id="btnUndo" style="display:none" title="撤回最近一次批量导入（导入后 30 分钟内有效）">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M3 7v6h6"/><path d="M3.5 13a9 9 0 1 0 2.3-9.4L3 7"/></svg>
+          撤回导入 <span id="undoCd" style="font-variant-numeric:tabular-nums;color:var(--text-secondary)"></span>
+        </button>
         <button class="btn btn-primary" id="btnNew" style="display:none">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M12 5v14M5 12h14"/></svg>
           新建资源
@@ -1445,41 +1468,170 @@ function decodeCsvSmart(file, cb){
   };
   fr.readAsArrayBuffer(file);
 }
+/* 批量导入（两段式）：① 先与已有数据比对出「预检清单」② 用户逐条勾选后才真正写库 */
 function openImport(){
-  $('#layerHost').innerHTML = '<div class="scrim" data-close="1"></div><div class="modal" style="width:min(560px,calc(100vw - 32px))">'
+  $('#layerHost').innerHTML = '<div class="scrim" data-close="1"></div><div class="modal" style="width:min(980px,calc(100vw - 32px))">'
     + '<div class="modal-head">批量导入物理机<button class="modal-x" data-close="1" style="background:none;border:none;font-size:20px;cursor:pointer;color:var(--text-secondary);line-height:1">×</button></div>'
     + '<div class="modal-body">'
     + '<p class="muted" style="margin:0 0 10px;font-size:var(--text-xs);line-height:1.6">每行一条，字段用<b>逗号</b>或<b>Tab</b>分隔（可直接粘贴 Excel 单元格），可带表头（推荐下载模板）。列顺序：<br><code>资源名称, IP, SN码, 负责人, 机器类型, 机房, 机柜, 到期, 办公区, 状态, 所属项目, 备注</code></p>'
-    + '<p class="muted" style="margin:0 0 10px;font-size:var(--text-xs);line-height:1.6;border-left:3px solid var(--border-color);padding-left:8px">'
-      + '去重规则：以 <b>SN码</b> 匹配已有物理机（忽略大小写与首尾空格）—— <b>命中则更新</b>该机器（保留关注人/评论，时间线追加一条「编辑资源」），<b>未命中则新增</b>；'
-      + '<b>SN 码为空的行无法匹配，一律新增</b>。更新时<b>留空的列不会清空</b>原有数据。</p>'
-    + '<textarea class="input" id="imTa" rows="8" placeholder="web-01, 192.168.1.10, 9800188103695037, 张伟, 服务器 / 物理机, A 栋机房, A-01, 2027-12-31, 南办公区, 在线, 核心交易, 核心交易主库"></textarea>'
+    + '<p class="muted" style="margin:0 0 10px;font-size:var(--text-xs);line-height:1.75;border-left:3px solid var(--accent);padding-left:9px">'
+      + '<b>① 匹配顺序</b>：<b>SN码 → IP → 资源名称</b> 从左到右依次比对<b>已有数据</b>（忽略大小写与首尾空格），命中即<b>更新</b>、未命中即<b>新增</b>。<br>'
+      + '<b>② 同批互不匹配</b>：本次文件里的行之间互不匹配，只与导入前的已有数据匹配。<br>'
+      + '<b>③ 由你决定</b>：命中 IP / 名称、会改写 SN 码、或同批重复的记录，会先列出来并<b>默认不勾选</b>，勾选后才会导入。<br>'
+      + '<b>④ 撤回</b>：导入完成后 30 分钟内，可用顶部「撤回导入」一键撤销本次操作。'
+    + '</p>'
+    + '<div id="imInput">'
+    + '<textarea class="input" id="imTa" rows="6" placeholder="web-01, 192.168.1.10, 9800188103695037, 张伟, 服务器 / 物理机, A 栋机房, A-01, 2027-12-31, 南办公区, 在线, 核心交易, 核心交易主库"></textarea>'
     + '<div style="display:flex;align-items:center;gap:10px;margin-top:10px"><label class="btn btn-secondary" style="cursor:pointer">选择 CSV<input type="file" id="imFile" accept=".csv,.txt" style="display:none"></label><span class="muted" id="imName" style="font-size:var(--text-xs)">未选择文件</span></div>'
+    + '</div>'
     + '<div id="imResult" style="margin-top:10px"></div>'
     + '</div>'
-    + '<div class="modal-foot"><button class="btn btn-secondary" data-close="1">取消</button><button class="btn btn-primary" id="imGo">开始导入</button></div></div>';
-  var ta=$('#imTa'), file=$('#imFile'), name=$('#imName'), res=$('#imResult'), go=$('#imGo');
-  var fileText='';
+    + '<div class="modal-foot">'
+      + '<span class="muted" id="imTip" style="font-size:var(--text-xs);margin-right:auto;align-self:center"></span>'
+      + '<button class="btn btn-secondary" data-close="1">取消</button>'
+      + '<button class="btn btn-secondary" id="imBack" style="display:none">返回修改</button>'
+      + '<button class="btn btn-primary" id="imGo">开始导入</button>'
+    + '</div></div>';
+  var ta=$('#imTa'), file=$('#imFile'), name=$('#imName'), res=$('#imResult');
+  var go=$('#imGo'), back=$('#imBack'), tip=$('#imTip');
+  var fileText='', stage='idle', PLAN=[], BASE=[];
+
+  var setStage=function(s){
+    stage=s;
+    if(back) back.style.display = (s==='plan') ? '' : 'none';
+    /* 预检/执行/完成阶段收起输入区，把高度让给预检表 */
+    var inp=$('#imInput'); if(inp) inp.style.display = (s==='idle') ? '' : 'none';
+    if(ta) ta.disabled = (s==='plan'||s==='run');
+    if(file) file.disabled = (s==='plan'||s==='run');
+  };
+  var updateFoot=function(){
+    if(stage!=='plan') return;
+    var sel=PLAN.filter(function(x){ return x.checked; }).length;
+    if(go){ go.textContent='确认导入（选中 '+sel+' 条）'; go.disabled=(sel===0); }
+    if(tip) tip.textContent = (sel<PLAN.length)
+      ? '已勾选 '+sel+' / '+PLAN.length+' 条，未勾选的将被跳过'
+      : '全部 '+sel+' 条将被导入';
+  };
+  var renderPlan=function(){
+    var nNew=0,nUpd=0,nRisk=0;
+    PLAN.forEach(function(it){ if(it.action==='create') nNew++; else nUpd++; if(it.level>0) nRisk++; });
+    var h='<div class="im-sum">'
+      + '<span class="im-pill">共 '+PLAN.length+' 条</span>'
+      + '<span class="im-pill" style="color:var(--success)">新增 '+nNew+'</span>'
+      + '<span class="im-pill" style="color:var(--accent)">更新 '+nUpd+'</span>'
+      + (nRisk ? '<span class="im-pill" style="color:var(--danger)">需确认 '+nRisk+'</span>' : '')
+      + '<span style="flex:1"></span>'
+      + '<button class="btn btn-secondary btn-sm" id="imAll">全选</button>'
+      + '<button class="btn btn-secondary btn-sm" id="imNone">全不选</button>'
+      + '</div>';
+    if(nRisk) h+='<p class="muted" style="margin:0 0 8px;font-size:var(--text-xs);line-height:1.6">⚠ 标黄/标红的 '+nRisk+' 条与已有数据或同批数据重复，<b>默认不勾选</b>；确认无误后手动勾选即会导入。</p>';
+    h+='<div class="im-tb"><table><thead><tr>'
+      + '<th style="width:34px"></th><th style="width:38px">#</th><th>资源名称</th><th>SN码</th><th>IP</th>'
+      + '<th style="min-width:210px">判定与原因</th></tr></thead><tbody>';
+    PLAN.forEach(function(it){
+      var r=it.row;
+      var bcls = it.level===0 ? (it.hit?'badge-info':'badge-success')
+               : (it.level===1 ? 'badge-warning' : 'badge-danger');
+      h+='<tr class="lv'+it.level+(it.checked?'':' off')+'" data-i="'+it.idx+'">'
+        + '<td><input type="checkbox" data-i="'+it.idx+'"'+(it.checked?' checked':'')+' style="cursor:pointer;width:14px;height:14px"></td>'
+        + '<td class="muted">'+it.no+'</td>'
+        + '<td style="font-weight:600">'+esc(r.name)+'</td>'
+        + '<td class="muted">'+esc(r.domain||'—')+'</td>'
+        + '<td class="muted">'+esc(r.pve_ip||'—')+'</td>'
+        + '<td><span class="badge '+bcls+'">'+esc(it.label)+'</span>'
+        +   (it.tips.length ? '<span class="im-tip">'+esc(it.tips.join('；'))+'</span>' : '')
+        + '</td></tr>';
+    });
+    h+='</tbody></table></div>';
+    res.innerHTML=h;
+    var all=$('#imAll'), none=$('#imNone');
+    if(all) all.onclick=function(){ PLAN.forEach(function(x){ x.checked=true; }); renderPlan(); };
+    if(none) none.onclick=function(){ PLAN.forEach(function(x){ x.checked=false; }); renderPlan(); };
+    updateFoot();
+  };
+  var analyze=function(){
+    var text=(ta.value||'')+(ta.value&&fileText?'\n':'')+fileText;
+    var rows=parseImportPhy(text);
+    if(!rows.length){ res.innerHTML='<span class="muted">未解析到有效数据（「资源名称」为空的行会被忽略）</span>'; return; }
+    go.disabled=true; go.textContent='比对已有数据…';
+    req(API+'/resources?category=physical').then(function(list){
+      go.disabled=false; go.textContent='开始导入';
+      BASE=list||[];
+      PLAN=buildImportPlan(rows,BASE);
+      setStage('plan');
+      renderPlan();
+      var risk=PLAN.filter(function(x){ return x.level>0; }).length;
+      toast('已比对 '+PLAN.length+' 条记录'+(risk?('，其中 '+risk+' 条需确认'):'，无冲突'), risk?'warn':'ok');
+    }).catch(function(e){
+      go.disabled=false; go.textContent='开始导入';
+      res.innerHTML='<span style="color:var(--danger)">'+esc(e.message||'比对失败')+'</span>';
+    });
+  };
+  var runSelected=function(){
+    var sel=PLAN.filter(function(x){ return x.checked; });
+    if(!sel.length){ toast('没有勾选任何记录','warn'); return; }
+    setStage('run'); go.disabled=true; go.textContent='导入中…'; if(tip) tip.textContent='';
+    var t0=Date.now();
+    runImportPlan(sel, function(d,t){ go.textContent='导入中 '+d+'/'+t; }).then(function(st){
+      var skipped=PLAN.length-sel.length, secs=((Date.now()-t0)/1000).toFixed(1);
+      var canUndo=(st.undo.created.length+st.undo.updated.length)>0;
+      if(canUndo){
+        st.undo.summary='新增 '+st.undo.created.length+' / 更新 '+st.undo.updated.length;
+        impUndoSave(st.undo); impUndoAuto();
+      }
+      var h='<div class="im-sum">'
+        + '<span class="im-pill" style="color:var(--success)">新增 '+st.okNew+'</span>'
+        + '<span class="im-pill" style="color:var(--accent)">更新 '+st.okUpd+'</span>'
+        + (skipped?'<span class="im-pill">跳过 '+skipped+'</span>':'')
+        + (st.fail?'<span class="im-pill" style="color:var(--danger)">失败 '+st.fail+'</span>':'')
+        + '<span class="im-pill">耗时 '+secs+'s</span>'
+        + '</div>';
+      h+='<p style="margin:8px 0 0;font-size:var(--text-xs);line-height:1.7">'
+        + (canUndo
+            ? '✅ 导入完成。<b>30 分钟内可撤回</b>：点下方按钮或顶部工具栏「撤回导入」即可撤销本次操作（仅保留最近一次导入）。'
+            : '导入完成，本次没有可撤回的写入。')
+        + '</p>';
+      if(canUndo) h+='<div style="margin-top:10px"><button class="btn btn-danger btn-sm" id="imUndo">撤回本次导入</button></div>';
+      if(st.errs.length){
+        h+='<div style="margin-top:8px;font-size:var(--text-xs);color:var(--danger);line-height:1.75">'
+          + st.errs.slice(0,30).map(esc).join('<br>')
+          + (st.errs.length>30 ? '<br>… 另有 '+(st.errs.length-30)+' 条失败未展示' : '')
+          + '</div>';
+      }
+      res.innerHTML=h;
+      var iu=$('#imUndo');
+      if(iu) iu.onclick=function(){ closeLayer(); openUndoImport(); };
+      go.textContent='完成'; go.disabled=true;
+      setStage('done');
+      toast('导入完成：新增 '+st.okNew+'，更新 '+st.okUpd+(st.fail?('，失败 '+st.fail):''), st.fail?'warn':'ok');
+      load(); /* 不自动关窗：保留结果面板供核对，用户点「取消/×」关闭 */
+    }).catch(function(e){
+      setStage('plan'); if(go){ go.disabled=false; } updateFoot();
+      res.innerHTML='<span style="color:var(--danger)">'+esc(e.message||'导入失败')+'</span>';
+    });
+  };
+
   if(file) file.addEventListener('change', function(){
     var f=file.files&&file.files[0]; if(!f) return; name.textContent=f.name;
     decodeCsvSmart(f, function(txt){ fileText=txt; });
   });
+  if(back) back.addEventListener('click', function(){
+    PLAN=[]; if(res) res.innerHTML=''; setStage('idle');
+    if(go){ go.textContent='开始导入'; go.disabled=false; }
+    if(tip) tip.textContent='';
+  });
+  if(res) res.addEventListener('click', function(e){
+    if(stage!=='plan') return;
+    var tr=e.target.closest ? e.target.closest('tr[data-i]') : null; if(!tr) return;
+    var i=parseInt(tr.getAttribute('data-i'),10); if(!PLAN[i]) return;
+    PLAN[i].checked = (e.target.tagName==='INPUT') ? !!e.target.checked : !PLAN[i].checked;
+    tr.classList.toggle('off', !PLAN[i].checked);
+    var cb=tr.querySelector('input[type=checkbox]'); if(cb) cb.checked=PLAN[i].checked;
+    updateFoot();
+  });
   if(go) go.addEventListener('click', function(){
-    var text=(ta.value||'')+(ta.value&&fileText?'\n':'')+fileText;
-    var rows=parseImportPhy(text);
-    if(!rows.length){ res.innerHTML='<span class="muted">未解析到有效数据</span>'; return; }
-    go.disabled=true; go.textContent='导入中…';
-    doImportPhy(rows).then(function(r){
-      go.disabled=false; go.textContent='开始导入';
-      var h='新增 <b>'+r.okNew+'</b> 条，更新 <b>'+r.okUpd+'</b> 条'+(r.fail?('，失败 <b>'+r.fail+'</b> 条'):'');
-      if(r.noSn) h+='<br><span class="muted">其中 '+r.noSn+' 行无 SN 码，无法匹配，已按新增处理</span>';
-      if(r.dupKeys&&r.dupKeys.length) h+='<br><span class="muted">⚠ 文件内 SN 重复 '+r.dupKeys.length+' 处（'+esc(r.dupKeys.slice(0,5).join('、'))+'），后出现者覆盖前者</span>';
-      if(r.errs.length) h+='<br>'+r.errs.slice(0,20).map(function(x){return esc(x)}).join('<br>');
-      res.innerHTML=h;
-      toast('导入完成：新增 '+r.okNew+'，更新 '+r.okUpd+(r.fail?('，失败 '+r.fail):''), r.fail?'warn':'ok');
-      go.disabled=true; go.textContent='完成';
-      load(); /* 不自动关窗：保留结果面板供核对，用户点「取消/×」关闭 */
-    }).catch(function(e){ go.disabled=false; go.textContent='开始导入'; res.innerHTML=esc(e.message||'导入失败'); });
+    if(stage==='plan') return runSelected();
+    if(stage==='idle') return analyze();
   });
 }
 /* CSV/TSV 记录状态机：支持引号包裹（引号内逗号/换行/"" 转义）与 Tab 分隔 */
@@ -1573,47 +1725,222 @@ function parseImportPhy(text){
     };
   }).filter(Boolean);
 }
-/* 批量导入（upsert）：
- * 匹配键 = domain(SN码)，仅在 category=physical 范围内、忽略大小写与首尾空格。
- *  - 行有 SN 且命中已有机器 ⇒ PUT 更新该条（保留 id / 关注人 / 评论 / 时间线追加）
- *  - 行有 SN 但未命中 ⇒ POST 新增（并把新 id 记入映射，文件内后续同 SN 行走更新）
- *  - 行无 SN ⇒ 无法匹配，一律 POST 新增
- * ⛔ 更新时只提交「CSV 中真正填了值」的字段（_given），空单元格被视为「不修改」，避免误清空已有数据。
+/* ===================== 硬件台账导入：匹配索引 / 预检计划 / 执行 / 撤回 =====================
+ * 匹配（自左向右逐级，命中即停）：① SN码(domain) → ② IP(pve_ip) → ③ 资源名称(name)
+ * ⛔⛔ 同批互不匹配：索引只在比对开始时按「已有数据」建一次快照（impIndex），执行期绝不回写，
+ *      因此本批 A 行新增/更新的记录不会成为 B 行的命中对象；同批重复只作为风险提示交给用户决定。
+ * ⛔ 命中一律「更新」（PUT + 仅提交本次填了值的字段）；未命中一律「新增」（POST）。
+ * ⛔ 撤回只保留最近一次导入，窗口 30 分钟，落 localStorage 以便刷新后仍可撤回。
  */
-function doImportPhy(rows){
-  var okNew=0, okUpd=0, fail=0, errs=[], snMap={}, snCount={};
-  var norm=function(v){ return String(v==null?'':v).trim().toUpperCase(); };
-  var strip=function(r){ var o={}; for(var k in r){ if(k.charAt(0)!=='_') o[k]=r[k]; } return o; };
-  var pick=function(r){ var o={}, g=r._given||['name']; g.forEach(function(k){ if(k in r) o[k]=r[k]; }); if(!('name' in o)) o.name=r.name; return o; };
-  var noSn=0;
-  rows.forEach(function(r){
-    if(norm(r.domain)){ var k=norm(r.domain); snCount[k]=(snCount[k]||0)+1; } else { noSn++; }
+var IMP_FIELDS=['name','pve_ip','domain','owner','machine_type','location','cabinet_id',
+                'expire_at','office_area','status','projects','remark'];
+var IMP_UNDO_KEY='phyImportUndo';
+var IMP_UNDO_MS=30*60*1000;
+
+function impNorm(v){ return String(v==null?'':v).trim().toUpperCase(); }
+function impStrip(r){ var o={}; for(var k in r){ if(k.charAt(0)!=='_') o[k]=r[k]; } return o; }
+function impPick(r){
+  var o={}, g=r._given||['name'];
+  g.forEach(function(k){ if(k in r) o[k]=r[k]; });
+  if(!('name' in o)) o.name=r.name;
+  return o;
+}
+/* 导入前的字段快照，供撤回时原样写回（不含 password / 协作字段） */
+function impSnap(x){
+  var o={};
+  IMP_FIELDS.forEach(function(k){
+    var v=x?x[k]:null;
+    if(k==='projects') v=Array.isArray(v)?v.slice():[];
+    o[k]=(v===undefined?null:v);
   });
-  var dupKeys=Object.keys(snCount).filter(function(k){ return snCount[k]>1; });
-  return req(API+'/resources?category=physical').then(function(list){
-    (list||[]).forEach(function(x){ var k=norm(x.domain); if(k && snMap[k]===undefined) snMap[k]=x.id; });
-    var outdated=0; // 命中过、但已被本次文件更新过的条数（仅统计不报错）
+  return o;
+}
+/* 三个独立索引，均来自「导入前」的已有数据；同一键多条时取 id 最小者（列表按 id 升序） */
+function impIndex(list){
+  var sn={}, ip={}, nm={};
+  (list||[]).forEach(function(x){
+    var k;
+    k=impNorm(x.domain);  if(k && sn[k]===undefined) sn[k]=x;
+    k=impNorm(x.pve_ip);  if(k && ip[k]===undefined) ip[k]=x;
+    k=impNorm(x.name);    if(k && nm[k]===undefined) nm[k]=x;
+  });
+  return {sn:sn, ip:ip, nm:nm};
+}
+/* 生成预检计划：每条给出 action / 命中来源 / 风险等级 / 默认是否勾选
+ * level 0 = 新增 或 SN 命中（默认勾选）
+ * level 1 = IP / 名称命中（默认不勾选）
+ * level 2 = 会改写 SN、同批重复、或与本次其它行指向同一条记录（默认不勾选）
+ */
+function buildImportPlan(rows, list){
+  var idx=impIndex(list);
+  var usedId={}, seenSn={}, seenIp={}, seenNm={}, plan=[];
+  rows.forEach(function(r,i){
+    var no=i+1;
+    var snK=impNorm(r.domain), ipK=impNorm(r.pve_ip), nmK=impNorm(r.name);
+    var hit=null, by='';
+    if(snK && idx.sn[snK]){ hit=idx.sn[snK]; by='SN'; }
+    else if(ipK && idx.ip[ipK]){ hit=idx.ip[ipK]; by='IP'; }
+    else if(nmK && idx.nm[nmK]){ hit=idx.nm[nmK]; by='名称'; }
+
+    var it={ idx:i, no:no, row:r, hit:hit, by:by, level:0, label:'',
+             tips:[], checked:true, action:(hit?'update':'create') };
+    if(!hit){
+      it.level=0; it.label='新增';
+    }else{
+      var oldSn=(hit.domain||'').trim();
+      var byHit=(by==='SN') ? 'SN 命中' : (by==='IP' ? 'IP 命中' : '名称命中');
+      it.label=byHit+' → 更新';
+      it.level=(by==='SN') ? 0 : 1;
+      if(snK && impNorm(oldSn)!==snK){
+        it.level=2;
+        it.label=byHit+' → 更新（SN 将被改写）';
+        it.tips.push('SN码 '+(oldSn||'（空）')+' → '+r.domain);
+      }
+      if(impNorm(hit.name)!==nmK) it.tips.push('名称 '+hit.name+' → '+r.name);
+      if(usedId[hit.id]!==undefined){
+        it.level=2;
+        it.tips.push('与本次第 '+usedId[hit.id]+' 行指向同一条已有记录（#'+hit.id+'）');
+      }else{
+        usedId[hit.id]=no;
+      }
+    }
+    var dup=[];
+    if(snK && seenSn[snK]!==undefined) dup.push('SN码同第 '+seenSn[snK]+' 行');
+    if(ipK && seenIp[ipK]!==undefined) dup.push('IP 同第 '+seenIp[ipK]+' 行');
+    if(nmK && seenNm[nmK]!==undefined) dup.push('名称同第 '+seenNm[nmK]+' 行');
+    if(dup.length){
+      it.level=2;
+      it.tips.push('同批重复：'+dup.join('，'));
+      if(!it.hit) it.label='新增（同批重复）';
+    }
+    if(snK && seenSn[snK]===undefined) seenSn[snK]=no;
+    if(ipK && seenIp[ipK]===undefined) seenIp[ipK]=no;
+    if(nmK && seenNm[nmK]===undefined) seenNm[nmK]=no;
+
+    it.checked = (it.level===0);   /* 有风险的一律默认不勾选，由用户明确决定 */
+    plan.push(it);
+  });
+  return plan;
+}
+/* 串行执行计划（保持原顺序，避免并发写同一条记录）；同时收集撤回所需的 created / before 快照 */
+function runImportPlan(plan, onTick){
+  var st={ okNew:0, okUpd:0, fail:0, errs:[],
+           undo:{ at:Date.now(), created:[], updated:[] } };
+  var total=plan.length, done=0, chain=Promise.resolve();
+  plan.forEach(function(it){
+    chain=chain.then(function(){
+      var r=it.row;
+      syncOwner(r.owner); /* 新负责人写入 OPTS.owners 并持久化（与编辑保存一致） */
+      done++; if(onTick) onTick(done,total);
+      if(it.action==='update' && it.hit){
+        var before=impSnap(it.hit);
+        return req(API+'/resources/'+it.hit.id,{method:'PUT',body:impPick(r)})
+          .then(function(){ st.okUpd++; st.undo.updated.push({id:it.hit.id, before:before}); })
+          .catch(function(e){ st.fail++; st.errs.push(r.name+'（更新 #'+it.hit.id+'）：'+(e.message||'')); });
+      }
+      return req(API+'/resources',{method:'POST',body:impStrip(r)})
+        .then(function(c){ st.okNew++; if(c&&c.id) st.undo.created.push(c.id); })
+        .catch(function(e){ st.fail++; st.errs.push(r.name+'（新增）：'+(e.message||'')); });
+    });
+  });
+  return chain.then(function(){ return st; });
+}
+/* ---------- 撤回（30 分钟窗口，仅最近一次导入） ---------- */
+var _impUndoTimer=null;
+function impUndoLoad(){
+  try{
+    var raw=localStorage.getItem(IMP_UNDO_KEY); if(!raw) return null;
+    var o=JSON.parse(raw); if(!o || !o.at) return null;
+    if(Date.now()-o.at>IMP_UNDO_MS){ localStorage.removeItem(IMP_UNDO_KEY); return null; }
+    o.created=o.created||[]; o.updated=o.updated||[];
+    return o;
+  }catch(e){ return null; }
+}
+function impUndoSave(o){ try{ localStorage.setItem(IMP_UNDO_KEY, JSON.stringify(o)); }catch(e){} }
+function impUndoClear(){ try{ localStorage.removeItem(IMP_UNDO_KEY); }catch(e){} }
+function impUndoSync(){
+  var b=$('#btnUndo');
+  var o=impUndoLoad();
+  if(!o || !isAdmin()){
+    if(b) b.style.display='none';
+    if(_impUndoTimer){ clearInterval(_impUndoTimer); _impUndoTimer=null; }
+    return;
+  }
+  var left=IMP_UNDO_MS-(Date.now()-o.at);
+  if(left<=0){
+    impUndoClear();
+    if(b) b.style.display='none';
+    if(_impUndoTimer){ clearInterval(_impUndoTimer); _impUndoTimer=null; }
+    return;
+  }
+  if(b) b.style.display='';
+  var cd=$('#undoCd');
+  if(cd){
+    var mm=Math.floor(left/60000), ss=Math.floor((left%60000)/1000);
+    cd.textContent=mm+':'+(ss<10?'0':'')+ss;
+  }
+}
+/* 有未过期撤回记录时启动倒计时；无记录则仅同步一次按钮显隐 */
+function impUndoAuto(){
+  if(_impUndoTimer){ clearInterval(_impUndoTimer); _impUndoTimer=null; }
+  impUndoSync();
+  if(impUndoLoad()) _impUndoTimer=setInterval(impUndoSync, 1000);
+}
+function openUndoImport(){
+  var o=impUndoLoad();
+  if(!o){ toast('没有可撤回的导入记录','warn'); impUndoAuto(); return; }
+  var left=IMP_UNDO_MS-(Date.now()-o.at);
+  var mm=Math.floor(left/60000), ss=Math.floor((left%60000)/1000);
+  var t=new Date(o.at);
+  var hh=('0'+t.getHours()).slice(-2)+':'+('0'+t.getMinutes()).slice(-2);
+  $('#layerHost').innerHTML='<div class="scrim" data-close="1"></div><div class="modal" style="width:min(460px,calc(100vw - 32px))">'
+    + '<div class="modal-head">撤回本次导入</div>'
+    + '<div class="modal-body">'
+    + '<p style="margin:0 0 10px;font-size:var(--text-sm);line-height:1.7">本次导入（<b>'+hh+'</b>）：新增 <b>'+o.created.length+'</b> 条，更新 <b>'+o.updated.length+'</b> 条。</p>'
+    + '<ul class="muted" style="margin:0 0 12px;padding-left:18px;font-size:var(--text-xs);line-height:1.9">'
+      + '<li>新增的 '+o.created.length+' 条将被<b>删除</b>（评论与时间线一并移除）</li>'
+      + '<li>更新的 '+o.updated.length+' 条将<b>恢复为导入前的值</b></li>'
+      + '<li>若导入后有人手工改过这些记录，<b>手工修改也会被回滚</b></li>'
+    + '</ul>'
+    + '<p class="muted" style="margin:0;font-size:var(--text-xs)">剩余可撤回时间：<b>'+mm+' 分 '+ss+' 秒</b>（导入后 30 分钟内有效）</p>'
+    + '</div>'
+    + '<div class="modal-foot"><button class="btn btn-secondary" data-close="1">取消</button>'
+    + '<button class="btn btn-danger" id="uOk">确认撤回</button></div></div>';
+  var btn=$('#uOk');
+  if(btn) btn.onclick=function(){
+    this.disabled=true; this.textContent='撤回中…';
+    var okDel=0, okRev=0, errs=[], keepUpd=[], keepNew=[];
     var chain=Promise.resolve();
-    rows.forEach(function(r){
+    o.updated.forEach(function(u){
       chain=chain.then(function(){
-        syncOwner(r.owner); // 新负责人写入 OPTS.owners 并持久化（与编辑保存一致）
-        var sn=norm(r.domain), hit=(sn && snMap[sn]!==undefined) ? snMap[sn] : null;
-        if(hit){
-          return req(API+'/resources/'+hit,{method:'PUT',body:pick(r)})
-            .then(function(){ okUpd++; })
-            .catch(function(e){ fail++; errs.push(r.name+'：'+e.message); });
-        }
-        return req(API+'/resources',{method:'POST',body:strip(r)})
-          .then(function(created){ okNew++; if(sn && created && created.id) snMap[sn]=created.id; })
-          .catch(function(e){ fail++; errs.push(r.name+'：'+e.message); });
+        return req(API+'/resources/'+u.id,{method:'PUT',body:u.before})
+          .then(function(){ okRev++; })
+          .catch(function(e){ keepUpd.push(u); errs.push('恢复 #'+u.id+'：'+(e.message||'')); });
       });
     });
-    return chain.then(function(){
-      return { okNew:okNew, okUpd:okUpd, ok:okNew+okUpd, fail:fail, errs:errs,
-               noSn:noSn, dupKeys:dupKeys };
+    o.created.forEach(function(id){
+      chain=chain.then(function(){
+        return req(API+'/resources/'+id,{method:'DELETE'})
+          .then(function(){ okDel++; })
+          .catch(function(e){ keepNew.push(id); errs.push('删除 #'+id+'：'+(e.message||'')); });
+      });
     });
-  });
+    chain.then(function(){
+      if(keepUpd.length||keepNew.length){
+        /* 只保留失败项，便于用户处理后重试；窗口时间沿用原始 at */
+        impUndoSave({ at:o.at, created:keepNew, updated:keepUpd, summary:o.summary });
+        impUndoAuto();
+      }else{
+        impUndoClear(); impUndoAuto();
+      }
+      closeLayer();
+      toast('已撤回：删除 '+okDel+' 条，恢复 '+okRev+' 条'+(errs.length?('，失败 '+errs.length+' 条'):''), errs.length?'warn':'ok');
+      if(errs.length) window.alert('以下操作失败，可再次点击「撤回导入」重试：\n'+errs.slice(0,20).join('\n'));
+      load();
+    });
+  };
 }
+
 // 下载硬件台账批量导入 CSV 模板（含 BOM，Excel 中文不乱码）
 // ⭐ 表头与「导出 CSV」逐列同名同序（12 列），保证「导出 → 编辑 → 回导」闭环
 function downloadPhyTemplate(){
@@ -1710,6 +2037,8 @@ $('#btnNew').addEventListener('click', function(){ openEdit(null); });
 $('#btnExport').addEventListener('click', openExportPicker);
 $('#btnImport').addEventListener('click', openImport);
 $('#btnImportTpl').addEventListener('click', downloadPhyTemplate);
+var btnUndoEl = $('#btnUndo');
+if(btnUndoEl) btnUndoEl.addEventListener('click', openUndoImport);
 
 /* ========== 卡片 / 表格切换 ========== */
 var VIEW_MODE = localStorage.getItem('resView') || 'table';
@@ -1748,6 +2077,7 @@ else {
       ['#btnNew','#btnImport','#btnImportTpl'].forEach(function(sel){
         var b = $(sel); if (b) b.style.display = '';
       });
+      impUndoAuto(); /* 导入后 30 分钟内的「撤回导入」按钮 + 倒计时 */
     }
     syncMineBtn();
     return load();

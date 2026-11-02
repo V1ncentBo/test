@@ -399,6 +399,40 @@ textarea.input{resize:vertical;min-height:66px;font-family:inherit}
 .m-grid dt{color:var(--text-secondary)}
 .m-grid dd{margin:0;font-weight:500}
 
+/* ---------- 分页（右下角，无独立底板，随页面背景） ---------- */
+.pager{
+  display:flex;align-items:center;gap:var(--space-3);flex-wrap:wrap;
+  margin-top:var(--space-3);padding:0;
+  background:none;border:0;border-radius:0;box-shadow:none;
+}
+.pg-info{font-size:var(--text-xs);color:var(--text-secondary);white-space:nowrap}
+.pg-info b{color:var(--text-primary);font-weight:650;font-variant-numeric:tabular-nums}
+.pg-right{margin-left:auto;display:flex;align-items:center;gap:var(--space-4);flex-wrap:wrap}
+.pg-size{display:inline-flex;align-items:center;gap:6px;white-space:nowrap;
+  font-size:var(--text-xs);color:var(--text-secondary)}
+.pg-size select{
+  padding:3px 6px;border-radius:var(--radius-sm);border:1px solid var(--border-default);
+  background:var(--surface-raised);color:var(--text-primary);
+  font-size:var(--text-xs);font-family:inherit;cursor:pointer;outline:none;
+}
+.pg-size select:hover{border-color:var(--accent)}
+.pg-btns{display:inline-flex;align-items:center;gap:4px}
+.pg-btn{
+  min-width:28px;height:28px;padding:0 7px;border-radius:var(--radius-sm);
+  border:1px solid var(--border-default);background:var(--surface-raised);
+  color:var(--text-secondary);font-size:var(--text-xs);font-weight:600;
+  font-family:inherit;font-variant-numeric:tabular-nums;cursor:pointer;
+  display:inline-flex;align-items:center;justify-content:center;
+  transition:border-color var(--duration-fast),color var(--duration-fast),background var(--duration-fast);
+}
+.pg-btn:hover:not(:disabled):not(.on){border-color:var(--accent);color:var(--accent)}
+.pg-btn.on{background:var(--accent);border-color:var(--accent);color:#fff}
+.pg-btn:disabled{opacity:.4;cursor:not-allowed}
+.pg-gap{padding:0 2px;color:var(--text-tertiary);font-size:var(--text-xs);user-select:none}
+@media (max-width:767px){
+  .pg-right{margin-left:0;width:100%;justify-content:space-between}
+}
+
 /* ---------- Responsive ---------- */
 @media (max-width:1023px){
   .sidebar{position:fixed;left:0;top:0;transform:translateX(-100%);
@@ -543,6 +577,7 @@ html.embed .content{padding:var(--space-5);max-width:none}
         <div id="stateBox"></div>
       </div>
       <div class="cards-m" id="cardsM"></div>
+      <div class="pager" id="pager" style="display:none"></div>
     </main>
   </div>
 </div>
@@ -864,14 +899,77 @@ function fillFilters(){
 }
 
 /* ===================== 渲染：列表 ===================== */
+/* ---------- 分页状态（每页条数记忆在 localStorage） ---------- */
+var PAGE_SIZES = [10,20,30,50,100];
+var PAGE_SIZE = (function(){
+  var v = parseInt(localStorage.getItem('phyPageSize') || '20', 10);
+  return PAGE_SIZES.indexOf(v) >= 0 ? v : 20;
+})();
+var PAGE = 1;
+function pageCount(n){ return Math.max(1, Math.ceil(n / PAGE_SIZE)); }
+/* 页码序列：≤7 页全列；否则「首段 1–5 / 尾段 last-4–last / 当前±2」+ 省略号 */
+function pageSeq(cur, total){
+  var out = [], i;
+  if(total <= 7){ for(i=1;i<=total;i++) out.push(i); return out; }
+  var s, e;
+  if(cur <= 4){ s = 1; e = 5; }
+  else if(cur >= total-3){ s = total-4; e = total; }
+  else { s = cur-2; e = cur+2; }
+  for(i=s;i<=e;i++) out.push(i);
+  if(s > 1){ out.unshift('…'); out.unshift(1); }
+  if(e < total){ out.push('…'); out.push(total); }
+  return out;
+}
+function hidePager(){
+  var el = $('#pager');
+  if(el){ el.innerHTML=''; el.style.display='none'; }
+}
+function renderPager(total){
+  var el = $('#pager');
+  if(!el) return;
+  if(!total){ hidePager(); return; }
+  var tp = pageCount(total);
+  if(PAGE > tp) PAGE = tp;
+  if(PAGE < 1) PAGE = 1;
+  var from = (PAGE-1)*PAGE_SIZE + 1, to = Math.min(total, PAGE*PAGE_SIZE);
+  var h = '<div class="pg-info">共 <b>'+total+'</b> 条 · 当前 <b>'+from+'–'+to+'</b></div>'
+        + '<div class="pg-right">'
+        +   '<label class="pg-size">每页 <select id="pgSize">'
+        +     PAGE_SIZES.map(function(v){ return '<option value="'+v+'"'+(v===PAGE_SIZE?' selected':'')+'>'+v+'</option>'; }).join('')
+        +   '</select> 条</label>'
+        +   '<div class="pg-btns">'
+        +     '<button class="pg-btn" data-p="'+(PAGE-1)+'"'+(PAGE<=1?' disabled':'')+' title="上一页" aria-label="上一页">‹</button>';
+  pageSeq(PAGE, tp).forEach(function(p){
+    if(p === '…'){ h += '<span class="pg-gap">…</span>'; return; }
+    h += '<button class="pg-btn'+(p===PAGE?' on':'')+'" data-p="'+p+'"'+(p===PAGE?' aria-current="page"':'')+'>'+p+'</button>';
+  });
+  h +=     '<button class="pg-btn" data-p="'+(PAGE+1)+'"'+(PAGE>=tp?' disabled':'')+' title="下一页" aria-label="下一页">›</button>'
+        +   '</div>'
+        + '</div>';
+  el.innerHTML = h;
+  el.style.display = '';
+}
+/* 翻页后若标题栏已滚出视口，把它拉回顶部，避免停留在页尾 */
+function pageScrollBack(){
+  var c = $('#tableCard');
+  if(!c) return;
+  var r = c.getBoundingClientRect();
+  if(r.top < 0) window.scrollBy({ top: r.top - 12, behavior:'smooth' });
+}
+
 /* 2026-10-19：点顶部统计卡 → 快捷筛选（再点取消）。
    _statKind 管状态维度（互斥），_expSoon 管「30天内到期」。 */
 var _expSoon = false;
 var _statKind = '';
+var _lastFilterSig = '';
 function computeView(){
   var q = $('#q').value.trim().toLowerCase();
   var st = $('#fStatus').value, ty = $('#fType').value, ow = $('#fOwner').value, pj = $('#fOffice').value;
   var rm = $('#fRoom').value, cb = $('#fCab').value;
+  /* 筛选条件一变就回到第 1 页（搜索/下拉/统计卡/只看我关注 全覆盖） */
+  var sig = [q,st,ty,ow,pj,rm,cb,_statKind,_expSoon,ONLY_FOLLOW].join('\u0001');
+  if(sig !== _lastFilterSig){ _lastFilterSig = sig; PAGE = 1; }
+
   VIEW = ROWS.filter(function(r){
     if(st && r.status !== st) return false;
     if(ty && normalizeType(r.machine_type) !== ty) return false;
@@ -917,11 +1015,13 @@ function render(){
 
   if(LOADING){
     tb.innerHTML = ''; cm.innerHTML = '';
+    hidePager();
     sb.innerHTML = '<div class="state"><div class="spin"></div><p>正在加载物理机…</p></div>';
     return;
   }
   if(ERR){
     tb.innerHTML = ''; cm.innerHTML = '';
+    hidePager();
     sb.innerHTML = '<div class="state">'
       + '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><circle cx="12" cy="12" r="9"/><path d="M12 8v5M12 16h.01"/></svg>'
       + '<h3>加载失败</h3><p>'+esc(ERR)+'</p>'
@@ -930,6 +1030,7 @@ function render(){
   }
   if(!ROWS.length){
     tb.innerHTML = ''; cm.innerHTML = '';
+    hidePager();
     sb.innerHTML = '<div class="state">'
       + '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><rect x="2" y="3" width="20" height="8" rx="2"/><rect x="2" y="13" width="20" height="8" rx="2"/><path d="M6 7h.01M6 17h.01"/></svg>'
       + '<h3>还没有物理机资源</h3>'
@@ -951,6 +1052,7 @@ function render(){
 
   if(!VIEW.length){
     tb.innerHTML = ''; cm.innerHTML = '';
+    hidePager();
     sb.innerHTML = '<div class="state">'
       + '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>'
       + '<h3>没有匹配的资源</h3><p>试试调整筛选条件或清空搜索词</p>'
@@ -964,6 +1066,14 @@ function render(){
     return;
   }
   sb.innerHTML = '';
+
+  /* 当前页切片（先切片再分组，分组头只统计本页） */
+  var _total = VIEW.length;
+  var _tp = pageCount(_total);
+  if(PAGE > _tp) PAGE = _tp;
+  if(PAGE < 1) PAGE = 1;
+  var _startIdx = (PAGE-1)*PAGE_SIZE;
+  var PAGE_ITEMS = VIEW.slice(_startIdx, _startIdx + PAGE_SIZE);
 
   /* 分组辅助 */
   function grouped(items){
@@ -979,7 +1089,7 @@ function render(){
   }
 
   /* 桌面表格 */
-  tb.innerHTML = grouped(VIEW).map(function(g){
+  tb.innerHTML = grouped(PAGE_ITEMS).map(function(g){
     var h = '';
     if(g.key) h += '<tr class="group-head"><td colspan="10"><span>'+esc(g.label)+'</span><small class="muted">（'+g.items.length+' 台）</small></td></tr>';
     h += g.items.map(function(r){
@@ -1007,7 +1117,7 @@ function render(){
   }).join('');
 
   /* C 款渐变卡片 */
-  cm.innerHTML = grouped(VIEW).map(function(g){
+  cm.innerHTML = grouped(PAGE_ITEMS).map(function(g){
     var h = '';
     if(g.key) h += '<div style="grid-column:1/-1;font-weight:650;font-size:var(--text-sm);padding:var(--space-2) 0;color:var(--accent);border-bottom:2px solid var(--accent-subtle);margin-bottom:var(--space-1)">'+esc(g.label)+' <span class="muted" style="font-size:var(--text-xs);font-weight:400">'+g.items.length+' 台</span></div>';
     h += g.items.map(function(r){
@@ -1037,7 +1147,31 @@ function render(){
     }).join('');
     return h;
   }).join('');
+
+  renderPager(_total);
 }
+
+/* 分页交互：翻页 + 每页条数（委托到 document，节点重建后依然有效） */
+document.addEventListener('click', function(e){
+  var b = e.target.closest('#pager .pg-btn');
+  if(!b || b.disabled) return;
+  var p = parseInt(b.getAttribute('data-p'), 10);
+  if(!p || p < 1) return;
+  if(p === PAGE) return;
+  PAGE = p;
+  render();
+  pageScrollBack();
+});
+document.addEventListener('change', function(e){
+  if(!e.target || e.target.id !== 'pgSize') return;
+  var v = parseInt(e.target.value, 10);
+  if(PAGE_SIZES.indexOf(v) < 0) return;
+  PAGE_SIZE = v;
+  try{ localStorage.setItem('phyPageSize', String(v)); }catch(_){}
+  PAGE = 1;
+  render();
+  pageScrollBack();
+});
 
 /* 事件委托 */
 document.addEventListener('click', function(e){

@@ -15,6 +15,8 @@ import models.resource_cmdb
 from routers import machines, metrics, alerts, ai, auth, register_node
 from routers import settings, report_schedule, ai_settings, advanced_routes, batch1_routes
 from routers.resource_cmdb import router as resource_cmdb_router
+import models.portmap  # PORTMAP-20261102：工位网口图（独立新表，不联动硬件台账）
+from routers.portmap import router as portmap_router, public_router as portmap_public_router
 from routers.dbs import router as dbs_router, db_collector
 from routers.files import router as files_router
 from websocket.manager import ws_manager
@@ -776,6 +778,10 @@ app.include_router(advanced_routes.router)
 app.include_router(batch1_routes.router)
 app.include_router(register_node.router)
 app.include_router(resource_cmdb_router)
+# 工位网口图（/api/portmap）：独立前端页 portmap.html，与资源台账无关联
+app.include_router(portmap_router)
+# 工位网口图·大屏：免登录只读接口（外网大屏直接 GET）
+app.include_router(portmap_public_router)
 app.include_router(dbs_router)
 # 运维文件库（资源管理第 7 项）：镜像/服务包 上传下载审计
 app.include_router(files_router)

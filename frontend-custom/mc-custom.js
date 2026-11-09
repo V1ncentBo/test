@@ -126,7 +126,7 @@
     }
     /* 注入页 → 是否属于「资源管理」族：只有这些页才点亮资源管理父级。
        账号管理(admin-users) 等独立注入页不再误点亮资源管理（2026-09-08 修复） */
-    var RC_PAGES = { 'admin-options': 1, 'resources': 1, 'cabinets': 1, 'physical': 1, 'filelib': 1 };
+    var RC_PAGES = { 'admin-options': 1, 'resources': 1, 'cabinets': 1, 'physical': 1, 'filelib': 1, 'portmap': 1 };
     /* 手工高亮：账号管理点开的是注入页，原生路由并未跳转，Vue 不会给它 active，
        需要我们自己加/摘（_hlEl 保存元素引用，Vue 重渲染后可重新定位） */
     var _hlEl = null;
@@ -166,7 +166,7 @@
        刷新时 Vue router 遇未知路径只影响 router-view，外壳/侧栏照常渲染，
        我们再由 maybeDeepLink 恢复注入页。 */
     var DEEP_PAGES = ['admin-users', 'admin-options', 'resources', 'cabinets', 'physical', 'db-monitor',
-                      'sla-monitor', 'topology', 'capacity', 'maintenance', 'filelib'];
+                      'sla-monitor', 'topology', 'capacity', 'maintenance', 'filelib', 'portmap'];
     function syncUrl() {
       try {
         var want = _active ? '/u/' + _active : '/';
@@ -199,9 +199,13 @@
       {k:'overview', label:'资源总览', perm:'overview'},
       {k:'resources', label:'资源台账', perm:'resources'},
       {k:'physical', label:'硬件台账', perm:'physical'},
+      /* 2026-11-02：工位网口图（独立静态页 portmap.html，走 page 分支 switchTo）。
+         与硬件台账解耦，仅复用 physical 权限位。 */
+      {k:'portmap', label:'工位网口图', perm:'physical', page:'portmap'},
+      /* 2026-11-05：机房机柜上移到项目管理之前（用户要求调整侧栏顺序） */
+      {k:'cabinets', label:'机房机柜', perm:'cabinets'},
       {k:'proj', label:'项目管理', perm:'proj'},
       {k:'owner', label:'负责人', perm:'owner'},
-      {k:'cabinets', label:'机房机柜', perm:'cabinets'},
       /* 2026-09-18：运维文件库（镜像/服务包上传下载审计）。
          后端 /api/files/* 独立路由；页面 filelib.html 独立静态页。 */
       {k:'filelib', label:'运维文件库', perm:'filelib', page:'filelib'}

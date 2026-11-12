@@ -2712,3 +2712,42 @@
     history.pushState = function () { var r = _ps3.apply(this, arguments); setTimeout(schedule, 60); return r; };
   }
 })();
+
+/* ══ MC-SCREEN-ENTRY 2026-11-11 监控总览 → 全局运行态势大屏 ══
+ * 需求：监控中心 → 监控总览页头加「大屏模式」入口，新标签打开
+ *       /monitor-screen.html（免登录只读大屏），不影响原生页面任何功能。
+ * 实现：原生 Dashboard 的 .dash-header 由 Vue 渲染、时机不定 ⇒ MutationObserver
+ *       + 800ms 兜底轮询，幂等插入（id 判断，不重复）。SPA 路由切走后由轮询摘除。
+ */
+(function () {
+  var ID = 'mcScreenEntryBtn';
+  function isHome() { return location.pathname === '/' || location.pathname === '/index.html'; }
+  function mount() {
+    try {
+      if (!isHome()) { unmount(); return; }
+      var header = document.querySelector('.main-area .dashboard .dash-header');
+      if (!header) return;
+      if (document.getElementById(ID)) return;
+      var btn = document.createElement('button');
+      btn.type = 'button';
+      btn.id = ID;
+      btn.className = 'mc-screen-entry';
+      btn.title = '在新标签页打开全局运行态势大屏（免登录只读）';
+      btn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="13" rx="2"/><path d="M8 21h8M12 17v4M7 12l3-3 3 2 4-4"/></svg><span>全局态势大屏</span>';
+      btn.onclick = function () { window.open('/monitor-screen.html', '_blank'); };
+      header.appendChild(btn);
+    } catch (e) { /* 静默降级：入口失败不影响页面 */ }
+  }
+  function unmount() {
+    var b = document.getElementById(ID);
+    if (b && b.parentNode) b.parentNode.removeChild(b);
+  }
+  function boot() {
+    mount();
+    var mo = new MutationObserver(function () { mount(); });
+    mo.observe(document.body, { childList: true, subtree: true });
+    setInterval(function () { if (isHome()) mount(); else unmount(); }, 800);
+  }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot);
+  else boot();
+})();

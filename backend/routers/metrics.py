@@ -28,6 +28,8 @@ from datetime import datetime
 
 import asyncio
 
+import re
+
 import logging
 
 logger = logging.getLogger("metrics")
@@ -35,6 +37,10 @@ logger = logging.getLogger("metrics")
 
 
 router = APIRouter(prefix="/api/metrics", tags=["监控数据"], )
+
+# 监控大屏：独立公开只读入口。不要给 public_router 挂 get_current_user；
+# 返回体由 public_screen 显式挑选字段，严禁直接序列化 ORM 对象。
+public_router = APIRouter(prefix="/api/metrics/public", tags=["监控大屏·公开只读"])
 
 
 # ══ HWSTATIC-20261010：机器「固定属性」快照 ══════════════════════════════════
@@ -694,5 +700,137 @@ def get_dashboard(db: Session = Depends(get_db)):
 
         "machines_latest": all_latest,
 
+    }
+
+
+# ══ MONITOR-SCREEN-20261111：免登录只读监控大屏 ═════════════════════════════
+def _screen_mask_ip(value) -> str:
+    """大屏只隐藏地址末段；设备识别仍保留名称。"""
+    text = str(value or "")
+    parts = text.split(".")
+    if len(parts) == 4 and all(p.isdigit() for p in parts):
+        return ".".join(parts[:3]) + ".*"
+    if ":" in text:
+        return text.rsplit(":", 1)[0] + ":*"
+    return "已隐藏" if text else ""
+
+
+def _screen_mask_text(value) -> str:
+    text = str(value or "")
+    return re.sub(r"\b(?:\d{1,3}\.){3}\d{1,3}\b",
+                  lambda m: _screen_mask_ip(m.group(0)), text)
+
+
+def _screen_num(value):
+    try:
+        return round(float(value), 1)
+    except (TypeError, ValueError):
+        return None
+
+
+@public_router.get("/screen")
+@ttl_cache(ttl=15)
+def public_screen(db: Session = Depends(get_db)):
+    """监控大屏一次性聚合：只读、脱敏、无凭据/SSH/AI 分析等敏感字段。
+
+    前端每次刷新只请求本接口；趋势由 InfluxDB 单查询聚合，避免 N+1。
+    SLA 与磁盘预测继续复用 advanced_routes 的 60s/300s 缓存。
+    """
+    from routers.advanced_routes import get_sla, all_disk_predictions
+
+    dashboard = get_dashboard(db=db)
+    stats = dashboard.get("stats", {})
+    latest = dashboard.get("machines_latest", {}) or {}
+    machines = db.query(MachineInfo).order_by(MachineInfo.id.asc()).all()
+    machine_names = {m.id: _screen_mask_text(m.name or f"设备 {m.id}") for m in machines}
+
+    health = []
+    for m in machines:
+        values = latest.get(str(m.id), {}) or {}
+        cpu = _screen_num(values.get("cpu_percent"))
+        memory = _screen_num(values.get("memory_percent"))
+        disk = _screen_num(values.get("disk_percent"))
+        load = _screen_num(values.get("load_1m"))
+        if not m.monitor_enabled:
+            level = "disabled"
+        elif m.maintenance_mode:
+            level = "maintenance"
+        elif m.online_status != "online":
+            level = "offline"
+        elif any(v is not None and v >= 95 for v in (cpu, memory, disk)):
+            level = "critical"
+        elif ((cpu is not None and cpu >= (m.cpu_threshold or 90)) or
+              (memory is not None and memory >= (m.memory_threshold or 90)) or
+              (disk is not None and disk >= (m.disk_threshold or 85))):
+            level = "warning"
+        else:
+            level = "normal"
+        name = machine_names.get(m.id, f"设备 {m.id}")
+        health.append({
+            "id": m.id,
+            "name": name,
+            "ip": _screen_mask_ip(m.ip),
+            "device_type": m.device_type or "",
+            "group_name": m.group_name or "default",
+            "online_status": m.online_status or "unknown",
+            "monitor_enabled": bool(m.monitor_enabled),
+            "health": level,
+            "metrics": {"cpu": cpu, "memory": memory, "disk": disk, "load": load},
+        })
+
+    unresolved = db.query(AlertLog).filter(AlertLog.status == "unresolved")
+    stats["unresolved_alerts"] = unresolved.count()
+    stats["monitored_count"] = sum(1 for m in machines if m.monitor_enabled)
+    alerts = []
+    for a in unresolved.order_by(AlertLog.created_at.desc()).limit(20).all():
+        name = machine_names.get(a.machine_id, f"设备 {a.machine_id}")
+        alerts.append({
+            "id": a.id,
+            "machine_id": a.machine_id,
+            "machine_name": name,
+            "level": a.alert_level or "warning",
+            "type": a.alert_type or "",
+            "message": _screen_mask_text(a.message),
+            "status": a.status or "unresolved",
+            "created_at": a.created_at.strftime("%Y-%m-%d %H:%M:%S") if a.created_at else "",
+        })
+
+    try:
+        sla = get_sla(7, db).get("data", {})
+        stats["avg_sla"] = (sla.get("summary", {}) or {}).get("avg_sla", 0)
+    except Exception as e:
+        logger.warning(f"screen SLA failed: {e}")
+        stats["avg_sla"] = 0
+
+    capacity = {"summary": {}, "items": []}
+    try:
+        disk_data = all_disk_predictions(db).get("data", {})
+        risk = [p for p in (disk_data.get("predictions", []) or [])
+                if p.get("status") in ("critical", "warning", "notice")]
+        risk.sort(key=lambda p: (p.get("days_until_full") is None,
+                                 p.get("days_until_full") if p.get("days_until_full") is not None else 999999))
+        capacity["summary"] = disk_data.get("summary", {}) or {}
+        capacity["items"] = [{
+            "machine_id": p.get("machine_id"),
+            "machine_name": _screen_mask_text(p.get("machine_name") or machine_names.get(p.get("machine_id"), "")),
+            "current_disk_pct": _screen_num(p.get("current_disk_pct")),
+            "days_until_full": p.get("days_until_full"),
+            "daily_growth_pct": p.get("daily_growth_pct"),
+            "status": p.get("status") or "",
+            "prediction": p.get("prediction") or "",
+        } for p in risk[:8]]
+    except Exception as e:
+        logger.warning(f"screen disk prediction failed: {e}")
+
+    return {
+        "code": 0,
+        "data": {
+            "generated_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            "stats": stats,
+            "machines": health,
+            "alerts": alerts,
+            "capacity": capacity,
+            "trend": metrics_service.query_fleet_trend("-24h", "15m"),
+        },
     }
 

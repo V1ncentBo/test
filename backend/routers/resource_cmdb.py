@@ -9,6 +9,7 @@ from sqlalchemy.orm.attributes import flag_modified
 from sqlalchemy import func
 from pydantic import BaseModel, Field
 from typing import Optional, List
+from collections import Counter, defaultdict
 from datetime import datetime
 
 from models.database import get_db
@@ -34,6 +35,7 @@ def to_dict(r: ResourceItem) -> dict:
         "owner": r.owner,
         "projects": r.projects or [],
         "machine_type": r.machine_type,
+        "architecture": r.architecture or "",
         "category": r.category or "vm",
         "location": r.location,
         "office_area": r.office_area or "",
@@ -70,6 +72,7 @@ class ResourceCreate(BaseModel):
     owner: str = ""
     projects: List[str] = Field(default_factory=list)
     machine_type: str = ""
+    architecture: str = ""
     category: str = "vm"
     location: str = ""
     office_area: str = ""
@@ -93,6 +96,7 @@ class ResourceUpdate(BaseModel):
     owner: Optional[str] = None
     projects: Optional[List[str]] = None
     machine_type: Optional[str] = None
+    architecture: Optional[str] = None
     category: Optional[str] = None
     location: Optional[str] = None
     office_area: Optional[str] = None
@@ -141,7 +145,7 @@ def create_resource(data: ResourceCreate, db: Session = Depends(get_db),
     r = ResourceItem(
         name=data.name, pve_ip=data.pve_ip, vm_ip=data.vm_ip, domain=data.domain,
         owner=data.owner, projects=data.projects, machine_type=data.machine_type,
-        category=data.category or "vm",
+        architecture=data.architecture or "", category=data.category or "vm",
         location=data.location, office_area=data.office_area,
         expire_at=data.expire_at, alert_count=data.alert_count,
         status=data.status, remark=data.remark, account=data.account,
@@ -317,7 +321,7 @@ DEFAULT_OPTIONS = {
     'pve_hosts': ['192.168.1.10', '192.168.1.12'],
     'projects': ['核心交易', '官网', '基础设施', '回归测试', '活动平台', '前端服务', '测试', '缓存'],
     'locations': ['A栋-10柜', 'A栋-12柜', 'A栋-13柜', 'A栋-14柜', 'B栋-02柜', 'B栋-05柜'],
-    'machine_types': [], 'owners': [],
+    'machine_types': [], 'owners': [], 'project_meta': {},
     'machine_exclude': [],
     'bindings': {
         'pve_location': [
@@ -336,7 +340,7 @@ def _load_options() -> dict:
         with open(OPTIONS_FILE, 'r', encoding='utf-8') as f:
             data = json.load(f)
             # 补全缺失 key
-            for k in ('pve_hosts', 'projects', 'locations', 'machine_types', 'owners', 'machine_exclude', 'bindings'):
+            for k in ('pve_hosts', 'projects', 'locations', 'machine_types', 'owners', 'project_meta', 'machine_exclude', 'bindings'):
                 if k not in data:
                     data[k] = DEFAULT_OPTIONS[k]
             if 'bindings' in data:
@@ -376,13 +380,14 @@ class OptionsBody(BaseModel):
     locations: Optional[List[str]] = None
     machine_types: Optional[List[str]] = None
     owners: Optional[List[str]] = None
+    project_meta: Optional[dict] = None
     machine_exclude: Optional[List[int]] = None
     bindings: Optional[dict] = None
 
 @router.put('/options', summary='更新可选项（仅管理员）', dependencies=[Depends(require_admin)])
 def update_options(body: OptionsBody):
     opts = _load_options()
-    for key in ('pve_hosts', 'projects', 'locations', 'machine_types', 'owners', 'machine_exclude'):
+    for key in ('pve_hosts', 'projects', 'locations', 'machine_types', 'owners', 'project_meta', 'machine_exclude'):
         val = getattr(body, key, None)
         if val is not None:
             opts[key] = val
@@ -390,6 +395,169 @@ def update_options(body: OptionsBody):
         opts['bindings'] = body.bindings
     _save_options(opts)
     return {'ok': True, 'data': opts}
+
+
+# ══ PROJECT-COCKPIT-20261112：项目总管汇总与项目档案 ═══════════════════════
+PROJECT_META_FIELDS = (
+    "dev_owner", "ops_owner", "business_owner", "environment", "target_arch", "description",
+)
+
+
+class ProjectMetaBody(BaseModel):
+    dev_owner: str = ""
+    ops_owner: str = ""
+    business_owner: str = ""
+    environment: str = ""
+    target_arch: str = ""
+    description: str = ""
+
+
+def _clean_project_meta(data: dict) -> dict:
+    src = data if isinstance(data, dict) else {}
+    out = {}
+    for key in PROJECT_META_FIELDS:
+        limit = 500 if key == "description" else 128
+        out[key] = str(src.get(key) or "").strip()[:limit]
+    return out
+
+
+def _resource_summary(r: ResourceItem, relation: str = "direct") -> dict:
+    is_physical = (r.category or "vm") == "physical"
+    own_ip = r.vm_ip or r.pve_ip or ""
+    parent_ip = r.pve_ip if (r.vm_ip and r.pve_ip and r.pve_ip != r.vm_ip) else ""
+    return {
+        "id": r.id,
+        "name": r.name or "",
+        "ip": own_ip,
+        "parent_ip": parent_ip,
+        "category": "physical" if is_physical else "vm",
+        "machine_type": (r.machine_type or ("物理机" if is_physical else "虚拟机")).strip(),
+        "architecture": (r.architecture or "").strip(),
+        "owner": (r.owner or "").strip(),
+        "status": (r.status or "unknown").strip(),
+        "location": (r.location or "").strip(),
+        "relation": relation,
+    }
+
+
+def _merge_resources(*groups):
+    merged = {}
+    for group in groups:
+        for r in group:
+            merged[r.id] = r
+    return list(merged.values())
+
+
+@router.get('/project-summary', summary='项目总管汇总（硬件/虚拟机/架构/负责人）')
+def project_summary(db: Session = Depends(get_db)):
+    """按项目归集资源。虚拟机的 pve_ip 会反查物理宿主机，补齐「相关硬件」。
+
+    兼容数据现实：71 台物理机尚未打项目标签，但 32 台虚拟机都有父级宿主机 IP，
+    所以此处不要求先回填物理机项目，先由关系自动聚合。
+    """
+    rows = db.query(ResourceItem).order_by(ResourceItem.id).all()
+    opts = _load_options()
+    configured = [str(p).strip() for p in (opts.get('projects') or []) if str(p).strip()]
+    active = sorted({str(p).strip() for r in rows for p in (r.projects or [])
+                     if isinstance(r.projects, list) and str(p).strip()})
+    project_names = list(dict.fromkeys(configured + active))
+    raw_meta = opts.get('project_meta') or {}
+    project_meta = {name: _clean_project_meta(raw_meta.get(name) or {}) for name in project_names}
+
+    hosts_by_ip = defaultdict(list)
+    for r in rows:
+        if (r.category or 'vm') == 'physical':
+            for ip in (r.pve_ip, r.vm_ip):
+                if ip:
+                    hosts_by_ip[ip].append(r)
+
+    projects = []
+    for name in project_names:
+        direct = [r for r in rows if isinstance(r.projects, list) and name in r.projects]
+        direct_ids = {r.id for r in direct}
+        parent_ips = {r.pve_ip for r in direct
+                      if (r.category or 'vm') != 'physical' and r.pve_ip}
+        linked_hosts = []
+        linked_ids = set()
+        for ip in parent_ips:
+            for h in hosts_by_ip.get(ip, []):
+                if h.id not in direct_ids and h.id not in linked_ids:
+                    linked_hosts.append(h)
+                    linked_ids.add(h.id)
+        all_rows = _merge_resources(direct, linked_hosts)
+        hardware = [r for r in all_rows if (r.category or 'vm') == 'physical']
+        vms = [r for r in all_rows if (r.category or 'vm') != 'physical']
+        status_counts = Counter((r.status or 'unknown') for r in all_rows)
+        arch_counts = Counter((r.architecture or '待补录').strip() or '待补录' for r in all_rows)
+        type_counts = Counter((r.machine_type or ('物理机' if (r.category or 'vm') == 'physical' else '虚拟机')).strip()
+                              for r in all_rows)
+        owner_counts = Counter((r.owner or '未指定').strip() or '未指定' for r in all_rows)
+        meta = project_meta.get(name) or _clean_project_meta({})
+        arch_done = sum(1 for r in all_rows if (r.architecture or '').strip())
+        role_done = int(bool(meta.get('dev_owner'))) + int(bool(meta.get('ops_owner')))
+        fields_total = len(all_rows) + 2
+        completeness = round((arch_done + role_done) * 100 / fields_total) if fields_total else 100
+        health = 'risk' if (status_counts.get('offline', 0) or status_counts.get('maintenance', 0)) else 'healthy'
+        projects.append({
+            "name": name,
+            "configured": name in configured,
+            "active": name in active,
+            "resource_count": len(all_rows),
+            "hardware_count": len(hardware),
+            "vm_count": len(vms),
+            "linked_hardware_count": len(linked_hosts),
+            "direct_count": len(direct),
+            "status_counts": dict(status_counts),
+            "architecture_counts": dict(arch_counts),
+            "machine_type_counts": dict(type_counts),
+            "owner_counts": dict(owner_counts),
+            "alert_count": sum(int(r.alert_count or 0) for r in all_rows),
+            "health": health,
+            "completeness": completeness,
+            "architecture_missing": len(all_rows) - arch_done,
+            "meta": meta,
+            "hardware": [_resource_summary(r, 'linked' if r.id in linked_ids else 'direct') for r in hardware],
+            "vms": [_resource_summary(r, 'direct') for r in vms],
+        })
+    projects.sort(key=lambda p: (-p["resource_count"], p["name"]))
+
+    meta_complete = sum(1 for p in projects if p["meta"].get("dev_owner") and p["meta"].get("ops_owner"))
+    return {
+        "ok": True,
+        "data": {
+            "generated_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            "global": {
+                "project_count": len(projects),
+                "configured_project_count": len(configured),
+                "active_project_count": len(active),
+                "resource_total": len(rows),
+                "physical_total": sum(1 for r in rows if (r.category or 'vm') == 'physical'),
+                "vm_total": sum(1 for r in rows if (r.category or 'vm') != 'physical'),
+                "unassigned_project_resources": sum(1 for r in rows
+                                                    if not (isinstance(r.projects, list) and r.projects)),
+                "architecture_missing": sum(1 for r in rows if not (r.architecture or '').strip()),
+                "role_complete_projects": meta_complete,
+                "role_missing_projects": len(projects) - meta_complete,
+            },
+            "projects": projects,
+            "project_meta": project_meta,
+        },
+    }
+
+
+@router.put('/project-meta/{name}', summary='保存项目档案（仅管理员）',
+            dependencies=[Depends(require_admin)])
+def update_project_meta(name: str, body: ProjectMetaBody):
+    name = (name or '').strip()
+    if not name:
+        raise HTTPException(status_code=400, detail='项目名称不能为空')
+    opts = _load_options()
+    meta = dict(opts.get('project_meta') or {})
+    clean = _clean_project_meta(body.model_dump())
+    meta[name] = clean
+    opts['project_meta'] = meta
+    _save_options(opts)
+    return {'ok': True, 'data': clean}
 
 
 # ══ RENAME-20261021：项目 / 负责人重命名（必须同步改写关联资源）═══════════════
@@ -426,6 +594,12 @@ def rename_option(body: RenameOptionBody, db: Session = Depends(get_db)):
     if old not in arr:
         raise HTTPException(status_code=404, detail='原名称不存在')
     opts[key] = [new if x == old else x for x in arr]
+    # 项目重命名时同步迁移项目档案（开发/运维负责人等），避免元数据变成孤儿。
+    if kind == 'proj':
+        meta = dict(opts.get('project_meta') or {})
+        if old in meta:
+            meta[new] = meta.pop(old)
+            opts['project_meta'] = meta
     _save_options(opts)
 
     renamed = 0

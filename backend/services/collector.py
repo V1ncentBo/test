@@ -473,6 +473,60 @@ class MetricsService:
             merged[mid].update(fields)
         return merged
 
+    def query_fleet_trend(self, start: str = "-24h", step: str = "15m") -> dict:
+        """全局资源均值趋势：单次查询聚合全部设备，避免大屏逐台 N+1 请求。
+
+        与 query_all_latest 同口径：machine_metrics 优先，vm_metrics 只补
+        某台机器某个字段完全缺失的序列；每个时间桶只统计有实测值的设备。
+        """
+        if start not in ("-1h", "-6h", "-24h", "-7d"):
+            start = "-24h"
+        if step not in ("5m", "15m", "30m", "1h", "6h"):
+            step = "15m"
+        fields = ("cpu_percent", "memory_percent", "disk_percent")
+        field_filter = " or ".join(f'r["_field"] == "{f}"' for f in fields)
+        query = f'''from(bucket: "{INFLUXDB_BUCKET}")
+|> range(start: {start})
+|> filter(fn: (r) => r["_measurement"] == "machine_metrics" or r["_measurement"] == "vm_metrics")
+|> filter(fn: (r) => {field_filter})
+|> aggregateWindow(every: {step}, fn: mean, createEmpty: false)'''
+        try:
+            result = self.query_api.query(query=query, org=INFLUXDB_ORG)
+            records = []
+            host_keys = set()
+            for table in result:
+                for record in table.records:
+                    mid = str(record.values.get("machine_id", ""))
+                    field = record.get_field()
+                    value = record.get_value()
+                    when = record.get_time()
+                    measurement = record.values.get("_measurement", "")
+                    if not mid or field not in fields or value is None or when is None:
+                        continue
+                    records.append((mid, field, when, float(value), measurement))
+                    if measurement == "machine_metrics":
+                        host_keys.add((mid, field))
+            buckets = {}
+            for mid, field, when, value, measurement in records:
+                if measurement == "vm_metrics" and (mid, field) in host_keys:
+                    continue
+                buckets.setdefault((field, when), {}).setdefault(mid, []).append(value)
+            series = {f: [] for f in fields}
+            for (field, when), per_mid in buckets.items():
+                means = [sum(vs) / len(vs) for vs in per_mid.values() if vs]
+                if means:
+                    series[field].append({
+                        "time": when.isoformat().replace("+00:00", "Z"),
+                        "value": round(sum(means) / len(means), 2),
+                        "samples": len(means),
+                    })
+            for field in fields:
+                series[field].sort(key=lambda p: p["time"])
+            return {"range": start, "step": step, "series": series}
+        except Exception as e:
+            print(f"[MetricsService] Query fleet trend error: {e}")
+            return {"range": start, "step": step, "series": {f: [] for f in fields}}
+
     def query_range(self, machine_id: int, start: str, end: str = "now") -> dict:
         """查询时间范围内的所有指标数据"""
         query = f'''

@@ -188,6 +188,24 @@ def init_db():
     ensure_user_columns()
     ensure_db_columns()
     ensure_hw_columns()
+    ensure_resource_columns()
+
+
+def ensure_resource_columns():
+    """PROJECT-COCKPIT-20261112：resource_items 补 CPU 架构列。
+
+    create_all 只建缺失表，不给已有表加列。这里沿用 SHOW COLUMNS + ALTER
+    的幂等套路，后端重启自动迁移，不影响历史资源记录。
+    """
+    try:
+        with engine.connect() as conn:
+            existing = {row[0] for row in conn.execute(text("SHOW COLUMNS FROM resource_items")).fetchall()}
+            if "architecture" not in existing:
+                conn.execute(text("ALTER TABLE resource_items ADD COLUMN architecture VARCHAR(24) NOT NULL DEFAULT ''"))
+                conn.commit()
+                print("[ensure] added column resource_items.architecture")
+    except Exception as e:
+        print(f"[ensure] resource columns error: {e}")
 
 
 def ensure_user_columns():

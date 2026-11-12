@@ -216,6 +216,91 @@
 .rc-empty-box .eb-ico svg{width:36px;height:36px}
 .rc-empty-box .eb-t{font-size:13px;color:var(--n500);margin-top:4px}
 
+/* ══ PROJECT-COCKPIT-20261112 · A 项目驾驶舱 ══ */
+.pm-stage{position:relative;display:grid;grid-template-columns:220px minmax(0,1fr) 280px;gap:14px;align-items:start}
+@media(max-width:1180px){.pm-stage{grid-template-columns:190px minmax(0,1fr)}.pm-side{grid-column:1/3}}
+.pm-panel{background:var(--n50);border:1px solid var(--n200);border-radius:14px;padding:16px;min-width:0;box-shadow:0 1px 2px rgba(16,24,40,.04)}
+.pm-panel + .pm-panel{margin-top:0}
+.pm-panel-h{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:0 0 12px}
+.pm-panel-h h3{font-size:14px;font-weight:700;color:var(--navy-900);margin:0}
+.pm-panel-h .hint{font-size:11px;color:var(--n400)}
+/* 项目集合：禁止 flex 子项压缩，否则 10 个项目会把标签行裁掉（2026-11-12 修复） */
+.pm-list{display:flex;flex-direction:column;gap:8px;max-height:none;overflow:visible;padding-right:0}
+.pm-item{position:relative;flex:0 0 auto;min-height:66px;border:1px solid var(--n200);border-radius:10px;background:var(--n50);padding:10px 11px 9px;cursor:pointer;transition:border-color .18s,transform .18s,box-shadow .18s;overflow:visible}
+.pm-item:hover{transform:translateY(-2px);border-color:var(--navy-700);box-shadow:0 7px 18px rgba(16,24,40,.08)}
+.pm-item.on{border-color:var(--navy-700);background:color-mix(in srgb,var(--navy-100) 65%,var(--n50))}
+.pm-item.on:before{content:"";position:absolute;left:0;top:8px;bottom:8px;width:3px;border-radius:0 3px 3px 0;background:var(--navy-800)}
+.pm-item .nm{font-size:13px;font-weight:600;line-height:1.35;color:var(--n900);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;padding-right:44px}
+.pm-item .ct{position:absolute;right:10px;top:11px;font-family:ui-monospace,Consolas,monospace;font-size:13px;font-weight:700;color:var(--navy-800)}
+.pm-item .sub{font-size:11px;line-height:1.4;color:var(--n500);margin-top:7px;display:flex;gap:7px;flex-wrap:wrap}
+.pm-item .tag{display:inline-flex;align-items:center;line-height:1.4;border-radius:999px;padding:1px 7px;background:var(--n100);color:var(--n500)}
+.pm-item .tag.risk{background:var(--r100);color:var(--r600)}
+.pm-item .tag.ok{background:var(--g100);color:var(--g600)}
+.pm-empty{padding:24px 12px;text-align:center;color:var(--n400);font-size:12px;border:1px dashed var(--n300);border-radius:10px}
+.pm-hero{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:14px}
+.pm-hero h2{font-size:22px;font-weight:700;color:var(--navy-900);margin:0;letter-spacing:-.02em}
+.pm-hero .desc{font-size:12px;color:var(--n500);margin-top:5px;line-height:1.6}
+.pm-health{display:inline-flex;align-items:center;gap:6px;padding:5px 11px;border-radius:999px;font-size:11px;font-weight:600;white-space:nowrap}
+.pm-health.healthy{background:var(--g100);color:var(--g600)}
+.pm-health.risk{background:var(--r100);color:var(--r600)}
+.pm-health i{width:6px;height:6px;border-radius:50%;background:currentColor}
+.pm-kpis{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin-bottom:14px}
+.pm-kpi{background:var(--n50);border:1px solid var(--n200);border-radius:11px;padding:12px}
+.pm-kpi .k{font-size:10px;letter-spacing:.04em;color:var(--n500)}
+.pm-kpi .v{font-family:ui-monospace,Consolas,monospace;font-size:25px;font-weight:700;color:var(--navy-900);line-height:1.15;margin-top:5px}
+.pm-kpi .x{font-size:10px;color:var(--n400);margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pm-grid2{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px}
+.pm-box{border:1px solid var(--n200);border-radius:11px;padding:12px;background:var(--n50)}
+.pm-box h4{font-size:12px;font-weight:700;color:var(--navy-900);margin:0 0 10px}
+.pm-rows{display:flex;flex-direction:column;gap:7px}
+.pm-role{display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:12px;color:var(--n500)}
+.pm-role b{font-size:12px;color:var(--n900);font-weight:600;text-align:right;max-width:65%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pm-role .todo{color:var(--a600);font-weight:600}
+.pm-chips{display:flex;flex-wrap:wrap;gap:6px}
+.pm-chip{font-size:11px;border:1px solid var(--n200);border-radius:999px;padding:3px 9px;background:var(--n100);color:var(--n500)}
+.pm-chip.blue{border-color:color-mix(in srgb,var(--navy-700) 35%,transparent);background:var(--navy-100);color:var(--navy-800)}
+.pm-chip.amber{border-color:color-mix(in srgb,var(--a600) 35%,transparent);background:var(--a100);color:var(--a600)}
+.pm-bar{height:6px;border-radius:4px;background:var(--n100);overflow:hidden;margin-top:9px}
+.pm-bar i{display:block;height:100%;background:var(--navy-700);border-radius:4px}
+.pm-actions{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px}
+.pm-btn{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--n300);background:var(--n50);color:var(--navy-800);border-radius:8px;padding:7px 11px;font-size:12px;font-weight:600;cursor:pointer;transition:.18s}
+.pm-btn:hover{border-color:var(--navy-700);transform:translateY(-1px)}
+.pm-btn.primary{background:var(--navy-800);color:#fff;border-color:var(--navy-800)}
+.pm-tabs{display:flex;gap:6px;margin-bottom:10px;flex-wrap:wrap}
+.pm-tab{border:1px solid var(--n200);background:var(--n50);border-radius:8px;padding:5px 10px;font-size:11px;color:var(--n500);cursor:pointer}
+.pm-tab.on{background:var(--navy-100);border-color:var(--navy-700);color:var(--navy-800);font-weight:600}
+.pm-table{width:100%;border-collapse:separate;border-spacing:0;font-size:12px}
+.pm-table th{font-size:10px;letter-spacing:.04em;color:var(--n400);text-align:left;font-weight:600;padding:7px 8px;border-bottom:1px solid var(--n200)}
+.pm-table td{padding:8px;border-bottom:1px solid var(--n200);color:var(--n900);vertical-align:middle}
+.pm-table tr:last-child td{border-bottom:0}
+.pm-table .name{font-weight:600;max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pm-table .muted{color:var(--n500);font-size:11px}
+.pm-status{display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:600}
+.pm-status i{width:6px;height:6px;border-radius:50%;background:var(--n400)}
+.pm-status.online i{background:var(--g600)}.pm-status.offline i{background:var(--r600)}.pm-status.maintenance i{background:var(--a600)}
+.pm-arch{width:100%;border:1px solid var(--n300);border-radius:7px;background:var(--n50);color:var(--n900);padding:4px 6px;font-size:11px}
+.pm-arch.todo{color:var(--a600);border-color:color-mix(in srgb,var(--a600) 35%,transparent);background:var(--a100)}
+.pm-side .pm-panel{margin-bottom:14px}
+.pm-side .pm-panel:last-child{margin-bottom:0}
+.pm-dist{display:flex;flex-direction:column;gap:9px}
+.pm-dist-row{font-size:11px;color:var(--n500)}
+.pm-dist-top{display:flex;justify-content:space-between;gap:6px;margin-bottom:5px}
+.pm-dist-top b{font-family:ui-monospace,Consolas,monospace;color:var(--n900)}
+.pm-modal{position:absolute;inset:0;z-index:30;display:none;align-items:flex-start;justify-content:center;padding:20px;background:color-mix(in srgb,var(--n900) 18%,transparent);border-radius:14px}
+.pm-modal.show{display:flex}
+.pm-modal-box{width:min(480px,100%);background:var(--n50);border:1px solid var(--n300);border-radius:14px;padding:18px;box-shadow:0 18px 50px rgba(16,24,40,.18)}
+.pm-modal-box h3{font-size:16px;margin:0 0 4px;color:var(--navy-900)}
+.pm-modal-box .sub{font-size:11px;color:var(--n500);margin-bottom:14px}
+.pm-form{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.pm-field{display:flex;flex-direction:column;gap:5px}
+.pm-field.wide{grid-column:1/3}
+.pm-field label{font-size:11px;color:var(--n500)}
+.pm-field input,.pm-field textarea,.pm-field select{border:1px solid var(--n300);border-radius:8px;background:var(--n50);color:var(--n900);padding:8px 10px;font-size:12px;font-family:inherit}
+.pm-field textarea{min-height:60px;resize:vertical}
+.pm-modal-foot{display:flex;justify-content:flex-end;gap:8px;margin-top:15px}
+.pm-note{font-size:11px;color:var(--n400);line-height:1.6;margin-top:10px}
+@media(max-width:900px){.pm-kpis{grid-template-columns:repeat(2,minmax(0,1fr))}.pm-grid2{grid-template-columns:1fr}.pm-form{grid-template-columns:1fr}.pm-field.wide{grid-column:auto}}
+
 /* 状态 badge */
 .badge{display:inline-flex;align-items:center;font-size:11px;font-weight:600;padding:2px 10px;border-radius:10px}
 .badge .dot{width:6px;height:6px;border-radius:50%;margin-right:5px}
@@ -442,12 +527,23 @@ input.rc-inp[list]::-webkit-calendar-picker-indicator{opacity:0;cursor:pointer}
           </div>
         </div>
       </div>
-      <div class="rc-field"><label>状态</label>
-        <select class="rc-inp" id="em_status">
-          <option value="online">在线</option>
-          <option value="offline">离线</option>
-          <option value="maintenance">维护中</option>
-        </select>
+      <div class="rc-form2">
+        <div class="rc-field"><label>CPU 架构</label>
+          <select class="rc-inp" id="em_arch">
+            <option value="">待补录</option>
+            <option value="x86_64">x86_64</option>
+            <option value="aarch64">aarch64</option>
+            <option value="arm64">arm64</option>
+            <option value="other">其他</option>
+          </select>
+        </div>
+        <div class="rc-field"><label>状态</label>
+          <select class="rc-inp" id="em_status">
+            <option value="online">在线</option>
+            <option value="offline">离线</option>
+            <option value="maintenance">维护中</option>
+          </select>
+        </div>
       </div>
       <div class="rc-field"><label>备注</label>
         <textarea class="rc-inp rc-remark-ta" id="em_remark" rows="3" maxlength="500" placeholder="选填"></textarea>
@@ -516,6 +612,8 @@ var TOKEN=localStorage.getItem('token')||'',API='/api/resource-cmdb',OPTS=null,R
 var ME={username:localStorage.getItem('username')||'',role:''};
 function isAdmin(){return ME.role==='admin';}
 var _tab='overview',_editId=null,_q='',_projFilter='',_ownerFilter='',_statusFilter='',_phyFilter='',_groupByProj=false,_hideOffline=false;
+/* PROJECT-COCKPIT-20261112：项目汇总、当前选中项目、资源清单页签 */
+var PROJECT_SUMMARY=null,PROJECT_SELECTED='',PROJECT_RES_TAB='all';
 
 function esc(v){return String(v||'').replace(/[&<>"']/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]})}
 function val(id){return (document.getElementById(id)||{}).value||''}
@@ -527,7 +625,8 @@ function load(){
     req(API+'/options'),
     req(API+'/resources').catch(function(){return []}),
     req('/api/machines/').catch(function(){return []}),
-    req(API+'/cabinets').catch(function(){return []})
+    req(API+'/cabinets').catch(function(){return []}),
+    req(API+'/project-summary').catch(function(){return null})
   ]).then(function(rs){
     if(typeof DEAD!=='undefined' && DEAD) return; /* 已切走：不要再改状态/后续渲染 */
     OPTS=rs[0].data||{};
@@ -536,6 +635,7 @@ function load(){
     PHY=ALL_RES.filter(function(r){ return r.category==='physical'; });     // 物理机管理：仅物理机
     MACHINES=rs[2]||[];
     CABINETS=rs[3]||[];
+    PROJECT_SUMMARY=rs[4]||null;
     // 取当前登录用户角色（用于详情页/操作按钮的 admin 判定，与硬件台账一致）
     return req('/api/auth/me').then(function(u){ if(u){ if(u.role)ME.role=u.role; if(u.username)ME.username=u.username; } }).catch(function(){});
   }).catch(function(e){toast(e.message,'err')})
@@ -580,7 +680,8 @@ function cnts(){
   RES.forEach(function(r){ if(r.machine_id!=null) imported[r.machine_id]=true; });
   var machN=0;
   MACHINES.forEach(function(mc){ if(excl.indexOf(mc.id)<0 && !imported[mc.id]) machN++; });
-  return{resources:RES.length+machN,cabinets:roomCount(),physical:PHY.length,proj:(OPTS.projects||[]).length,owner:(OPTS.owners||[]).length,type:(OPTS.machine_types||[]).length}
+  var projN=(PROJECT_SUMMARY&&PROJECT_SUMMARY.data&&PROJECT_SUMMARY.data.global)?PROJECT_SUMMARY.data.global.project_count:(OPTS.projects||[]).length;
+  return{resources:RES.length+machN,cabinets:roomCount(),physical:PHY.length,proj:projN,owner:(OPTS.owners||[]).length,type:(OPTS.machine_types||[]).length}
 }
 // 某项目/负责人/类型下的资源数
 function resCount(field,val){
@@ -604,7 +705,11 @@ function statusCount(st){return RES.filter(function(r){return r.status===st}).le
    注意 DEAD 用 typeof 判存在：本函数可能在 DEAD 声明之前就被调用（脚本顺序）。 */
 function go(k){
   if(typeof DEAD!=='undefined' && DEAD) return;
-  _tab=k;render();
+  _tab=k;
+  /* PROJECT-COCKPIT-20261112：新驾驶舱 render 较重，先点亮侧栏再渲染，
+     结束后再校准一次，避免全量回归并发负载下读到上一页的高亮。 */
+  if(window.__RC_SET_ACTIVE__)window.__RC_SET_ACTIVE__(k);
+  render();
   if(window.__RC_SET_ACTIVE__)window.__RC_SET_ACTIVE__(k);
 }
 window.__RC_GOTO__=go;
@@ -613,7 +718,7 @@ window.__RC_GOTO__=go;
 var TAB_META = {
   overview:{title:'资源总览', desc:'资源资产总览与快速检索'},
   resources:{title:'资源台账', desc:'虚拟机资产台账 · 负责人归属、项目与到期跟踪'},
-  proj:{title:'项目管理', desc:'按项目归集资源 · 便于成本与权限划分'},
+  proj:{title:'项目总管', desc:'按项目归集硬件、虚拟机、架构与开发/运维责任'},
   owner:{title:'负责人', desc:'按负责人归集资源 · 责任到人、快速定位'},
   pve:{title:'机房管理', desc:'机房、机柜与设备上架管理'}
 };
@@ -682,6 +787,16 @@ function renderToolbar(){
     return;
   }
   var c=_tab==='proj'?'项目':'负责人';
+  if(_tab==='proj'){
+    var pc=(PROJECT_SUMMARY&&PROJECT_SUMMARY.data&&PROJECT_SUMMARY.data.global)?PROJECT_SUMMARY.data.global.project_count:0;
+    t.innerHTML='<div class="rc-toolbar"><span class="title" id="rcTitle">项目总管（'+pc+' 个集合）</span>'
+      +'<div class="actions">'
+      +'<input class="rc-inp" id="rc-q" placeholder="搜索项目 / 资源 / 负责人" style="width:220px;flex:none" '+qv+'>'
+      +'<button class="rc-btn-ghost" data-pm-refresh="1">刷新汇总</button>'
+      +'<button class="rc-btn rc-btn-p" data-addtag="proj">添加项目</button>'
+      +'</div></div>';
+    return;
+  }
   t.innerHTML='<div class="rc-toolbar"><span class="title" id="rcTitle">'+c+'管理</span>'
     +'<div class="actions">'
     +'<input class="rc-inp" id="rc-q" placeholder="搜索'+c+'" style="width:200px;flex:none" '+qv+'>'
@@ -695,6 +810,7 @@ function renderBody(){
   if(_tab==='overview')renderOverview(b);
   else if(_tab==='resources')renderRes(b);
   else if(_tab==='pve')renderPve(b);
+  else if(_tab==='proj')renderProjectCockpit(b);
   else renderTags(b,_tab);
 }
 
@@ -887,6 +1003,22 @@ function computeResRows(){
 }
 function renderResStats(){
   var s=document.getElementById('rcStats'); if(!s) return;
+  // PROJECT-COCKPIT-20261112：项目总管统计（改为全量资源口径，不再只算虚拟机）
+  if(_tab==='proj'&&PROJECT_SUMMARY&&PROJECT_SUMMARY.data){
+    var pg=PROJECT_SUMMARY.data.global||{};
+    s.innerHTML=renderStatCards([
+      {k:'项目集合',v:pg.project_count||0,num:pg.project_count||0,ico:IC.folder,bar:'var(--a600)',
+       x:'配置 '+(pg.configured_project_count||0)+' · 在用 '+(pg.active_project_count||0)},
+      {k:'资源总数',v:pg.resource_total||0,num:pg.resource_total||0,ico:IC.db,bar:'var(--navy-800)',
+       x:'未归项 '+(pg.unassigned_project_resources||0)+' 台'},
+      {k:'相关硬件',v:pg.physical_total||0,num:pg.physical_total||0,ico:IC.host,bar:'var(--g600)',
+       x:'按父级宿主机 IP 自动归集'},
+      {k:'虚拟机',v:pg.vm_total||0,num:pg.vm_total||0,ico:IC.grid,bar:'var(--navy-700)',
+       x:'架构待补录 '+(pg.architecture_missing||0)+' 台'}
+    ]);
+    animateStats(s);
+    return;
+  }
   // 项目 / 负责人：统计条（项目 N 个 / 覆盖资源 X 台 / 未分组 Y 台）
   if(_tab==='proj'||_tab==='owner'){
     var isProj=(_tab==='proj');
@@ -1067,6 +1199,178 @@ function renderPve(m){
   }).join('')+'</div>';
 }
 
+/* ══ PROJECT-COCKPIT-20261112 · A 项目驾驶舱（替换 proj 页签） ══ */
+function pmData(){ return (PROJECT_SUMMARY&&PROJECT_SUMMARY.data)||null; }
+function pmProject(name){
+  var d=pmData(),ps=(d&&d.projects)||[];
+  for(var i=0;i<ps.length;i++){ if(ps[i].name===name)return ps[i]; }
+  return ps[0]||null;
+}
+function pmArchSelect(r){
+  var cur=r.architecture||'',opts=[['','待补录'],['x86_64','x86_64'],['aarch64','aarch64'],['arm64','arm64'],['other','其他']],found=false,html='';
+  opts.forEach(function(o){ if(o[0]===cur)found=true; });
+  if(cur&&!found)opts.push([cur,cur]);
+  opts.forEach(function(o){ html+='<option value="'+esc(o[0])+'"'+(o[0]===cur?' selected':'')+'>'+esc(o[1])+'</option>'; });
+  return'<select class="pm-arch'+(cur?'':' todo')+'" data-pm-arch="'+r.id+'"'+(isAdmin()?'':' disabled')+'>'+html+'</select>';
+}
+function pmStatusHtml(st){
+  var label=st==='online'?'在线':st==='offline'?'离线':st==='maintenance'?'维护中':(st||'未知');
+  return'<span class="pm-status '+esc(st||'unknown')+'"><i></i>'+esc(label)+'</span>';
+}
+function pmDistHtml(counts,total){
+  var keys=Object.keys(counts||{}).sort(function(a,b){return (counts[b]||0)-(counts[a]||0)}).slice(0,5);
+  if(!keys.length)return'<div class="pm-empty">暂无数据</div>';
+  return'<div class="pm-dist">'+keys.map(function(k){
+    var v=counts[k]||0,pct=total?Math.max(2,Math.round(v*100/total)):0;
+    var color=k==='待补录'?'var(--a600)':'var(--navy-700)';
+    return'<div class="pm-dist-row"><div class="pm-dist-top"><span>'+esc(k)+'</span><b>'+v+'</b></div><div class="pm-bar"><i style="width:'+pct+'%;background:'+color+'"></i></div></div>';
+  }).join('')+'</div>';
+}
+function pmOwnerChips(counts){
+  var keys=Object.keys(counts||{}).sort(function(a,b){return (counts[b]||0)-(counts[a]||0)}).slice(0,6);
+  if(!keys.length)return'<div class="pm-empty">暂无负责人</div>';
+  return'<div class="pm-chips">'+keys.map(function(k){return'<span class="pm-chip'+(k==='未指定'?' amber':' blue')+'">'+esc(k)+' · '+counts[k]+'</span>'}).join('')+'</div>';
+}
+function pmRoleRow(label,val){
+  return'<div class="pm-role"><span>'+esc(label)+'</span><b class="'+(val?'':'todo')+'">'+esc(val||'待补录')+'</b></div>';
+}
+function pmResourceRows(p,tab){
+  var rows=(p.hardware||[]).concat(p.vms||[]);
+  if(tab==='hardware')rows=(p.hardware||[]).slice();
+  if(tab==='vm')rows=(p.vms||[]).slice();
+  rows=rows.slice(0,12);
+  if(!rows.length)return'<tr><td colspan="7"><div class="pm-empty">暂无资源</div></td></tr>';
+  return rows.map(function(r){
+    return'<tr><td class="name" title="'+esc(r.name)+'">'+esc(r.name)
+      +(r.relation==='linked'?'<div class="muted">父级 IP 自动关联</div>':'')+'</td>'
+      +'<td class="muted mono">'+esc(r.ip||'—')+'</td>'
+      +'<td>'+(r.category==='physical'?'硬件':'虚拟机')+'</td>'
+      +'<td class="muted">'+esc(r.machine_type||'—')+'</td>'
+      +'<td>'+pmArchSelect(r)+'</td>'
+      +'<td class="muted">'+esc(r.owner||'—')+'</td>'
+      +'<td>'+pmStatusHtml(r.status)+'</td></tr>';
+  }).join('');
+}
+function renderProjectCockpit(m){
+  var d=pmData();
+  if(!d){m.innerHTML='<div class="pm-panel"><div class="pm-empty">项目汇总正在加载，请稍后刷新</div></div>';return}
+  var ps=d.projects||[],g=d.global||{},q=(_q||'').toLowerCase();
+  if(!PROJECT_SELECTED||!pmProject(PROJECT_SELECTED))PROJECT_SELECTED=ps[0]?ps[0].name:'';
+  var p=pmProject(PROJECT_SELECTED);
+  if(!p){m.innerHTML='<div class="pm-panel"><div class="pm-empty">暂无项目，点击右上角「添加项目」</div></div>';return}
+  var meta=p.meta||{},sc=p.status_counts||{},off=sc.offline||0,mt=sc.maintenance||0;
+  var visible=ps.filter(function(x){
+    if(!q)return true;
+    var hay=[x.name,metaVal(x,'dev_owner'),metaVal(x,'ops_owner'),metaVal(x,'target_arch')]
+      .concat((x.hardware||[]).map(function(r){return r.name+' '+r.owner}))
+      .concat((x.vms||[]).map(function(r){return r.name+' '+r.owner})).join(' ').toLowerCase();
+    return hay.indexOf(q)>=0;
+  });
+  function metaVal(x,k){return ((x.meta||{})[k]||'')}
+  var listHtml=visible.length?visible.map(function(x){
+    var xs=x.status_counts||{},risk=(xs.offline||0)+(xs.maintenance||0);
+    return'<div class="pm-item'+(x.name===p.name?' on':'')+'" data-pm-project="'+esc(x.name)+'">'
+      +'<div class="nm">'+esc(x.name)+'</div><div class="ct">'+x.resource_count+'</div>'
+      +'<div class="sub"><span class="tag">硬件 '+x.hardware_count+'</span><span class="tag">虚拟机 '+x.vm_count+'</span>'
+      +'<span class="tag '+(risk?'risk':'ok')+'">'+(risk?'需关注':'正常')+'</span>'
+      +(x.configured?'':'<span class="tag">在用标签</span>')+'</div></div>';
+  }).join(''):'<div class="pm-empty">未找到匹配项目</div>';
+  var allRows=(p.hardware||[]).concat(p.vms||[]);
+  var archHtml=pmDistHtml(p.architecture_counts||{},p.resource_count||0);
+  var typeHtml=pmDistHtml(p.machine_type_counts||{},p.resource_count||0);
+  var tabHtml=[['all','全部 '+allRows.length],['hardware','硬件 '+p.hardware_count],['vm','虚拟机 '+p.vm_count]].map(function(t){
+    return'<button class="pm-tab'+(PROJECT_RES_TAB===t[0]?' on':'')+'" data-pm-tab="'+t[0]+'">'+esc(t[1])+'</button>';
+  }).join('');
+  var statusChips=[['online','在线'],['offline','离线'],['maintenance','维护']].map(function(s){
+    return'<span class="pm-chip'+(s[0]==='offline'&&sc[s[0]]?' amber':'')+'">'+s[1]+' '+(sc[s[0]]||0)+'</span>';
+  }).join('');
+  var metaModal='<div class="pm-modal" id="pmModal"><div class="pm-modal-box"><h3>编辑项目档案</h3>'
+    +'<div class="sub">'+esc(p.name)+' · 角色与默认架构只影响展示，不改写资源台账 owner</div>'
+    +'<div class="pm-form">'
+    +'<div class="pm-field"><label>开发负责人</label><input id="pm_dev" value="'+esc(meta.dev_owner||'')+'" placeholder="如 冯军"></div>'
+    +'<div class="pm-field"><label>运维负责人</label><input id="pm_ops" value="'+esc(meta.ops_owner||'')+'" placeholder="如 秦国锋"></div>'
+    +'<div class="pm-field"><label>业务负责人</label><input id="pm_biz" value="'+esc(meta.business_owner||'')+'" placeholder="如 产品负责人"></div>'
+    +'<div class="pm-field"><label>项目默认架构</label><input id="pm_arch" value="'+esc(meta.target_arch||'')+'" placeholder="如 x86_64"></div>'
+    +'<div class="pm-field"><label>环境</label><input id="pm_env" value="'+esc(meta.environment||'')+'" placeholder="生产 / 测试 / 灾备"></div>'
+    +'<div class="pm-field wide"><label>项目说明</label><textarea id="pm_desc" placeholder="项目用途、边界或交接说明">'+esc(meta.description||'')+'</textarea></div>'
+    +'</div><div class="pm-modal-foot"><button class="pm-btn" data-pm-cancel="1">取消</button>'
+    +'<button class="pm-btn primary" data-pm-save="1">保存档案</button></div></div></div>';
+  m.innerHTML='<div class="pm-stage">'
+    +'<div class="pm-panel"><div class="pm-panel-h"><h3>项目集合</h3><span class="hint">'+visible.length+' / '+ps.length+'</span></div><div class="pm-list">'+listHtml+'</div></div>'
+    +'<div class="pm-panel">'
+      +'<div class="pm-hero"><div><h2>'+esc(p.name)+'</h2><div class="desc">'+esc(meta.description||'按父级宿主机 IP 自动归集硬件 · 资源标签与项目档案合并展示')+'</div></div>'
+      +'<span class="pm-health '+p.health+'"><i></i>'+(p.health==='risk'?'需关注':'运行正常')+'</span></div>'
+      +'<div class="pm-kpis">'
+        +'<div class="pm-kpi"><div class="k">关联资源</div><div class="v">'+p.resource_count+'</div><div class="x">直接 '+(p.direct_count||0)+' · 关联 '+(p.linked_hardware_count||0)+'</div></div>'
+        +'<div class="pm-kpi"><div class="k">相关硬件</div><div class="v">'+p.hardware_count+'</div><div class="x">物理宿主机</div></div>'
+        +'<div class="pm-kpi"><div class="k">相关虚拟机</div><div class="v">'+p.vm_count+'</div><div class="x">业务实例</div></div>'
+        +'<div class="pm-kpi"><div class="k">字段完整度</div><div class="v">'+p.completeness+'%</div><div class="x">架构 / 开发 / 运维</div></div>'
+      +'</div>'
+      +'<div class="pm-grid2">'
+        +'<div class="pm-box"><h4>责任与身份</h4><div class="pm-rows">'
+          +pmRoleRow('开发负责人',meta.dev_owner)+pmRoleRow('运维负责人',meta.ops_owner)
+          +pmRoleRow('业务负责人',meta.business_owner)+pmRoleRow('项目默认架构',meta.target_arch)
+          +pmRoleRow('环境',meta.environment)+'</div>'
+          +'<div class="pm-bar"><i style="width:'+p.completeness+'%"></i></div>'
+          +'<div class="pm-note">资源台账原有 owner 保持不变；CPU 架构需逐台补录，x86 不自动推断。</div></div>'
+        +'<div class="pm-box"><h4>状态与风险</h4><div class="pm-chips">'+statusChips+'</div>'
+          +'<div class="pm-rows" style="margin-top:12px">'+pmRoleRow('离线 / 维护',((off||0)+(mt||0))+' 台')+pmRoleRow('关联告警',(p.alert_count||0)+' 条')+'</div>'
+          +'<div class="pm-note">架构待补录 '+(p.architecture_missing||0)+' 台 · 字段越完整，项目交接越可靠。</div></div>'
+      +'</div>'
+      +'<div class="pm-actions">'
+        +'<button class="pm-btn primary" data-pm-edit="1"'+(isAdmin()?'':' disabled')+'>编辑项目档案</button>'
+        +'<button class="pm-btn" data-pm-view="1">查看项目台账</button>'
+        +'<button class="pm-btn" data-pm-refresh-inline="1">刷新汇总</button>'
+      +'</div>'
+      +'<div class="pm-box"><div class="pm-panel-h"><h3>资源清单</h3><span class="hint">最多 12 条 · 架构可直接补录</span></div>'
+      +'<div class="pm-tabs">'+tabHtml+'</div>'
+      +'<div class="rc-table" style="overflow:auto"><table class="pm-table"><thead><tr><th>名称 / 关联</th><th>IP</th><th>类别</th><th>机器类型</th><th style="width:110px">CPU 架构</th><th>负责人</th><th>状态</th></tr></thead><tbody>'+pmResourceRows(p,PROJECT_RES_TAB)+'</tbody></table></div></div>'
+    +'</div>'
+    +'<div class="pm-side">'
+      +'<div class="pm-panel"><div class="pm-panel-h"><h3>资源构成</h3><span class="hint">'+p.resource_count+' 台</span></div>'
+        +'<div class="pm-dist"><div class="pm-dist-row"><div class="pm-dist-top"><span>相关硬件</span><b>'+p.hardware_count+'</b></div><div class="pm-bar"><i style="width:'+(p.resource_count?Math.round(p.hardware_count*100/p.resource_count):0)+'%;background:var(--g600)"></i></div></div>'
+        +'<div class="pm-dist-row"><div class="pm-dist-top"><span>相关虚拟机</span><b>'+p.vm_count+'</b></div><div class="pm-bar"><i style="width:'+(p.resource_count?Math.round(p.vm_count*100/p.resource_count):0)+'%"></i></div></div></div>'
+        +'<div class="pm-note">硬件由虚拟机父级宿主机 IP 自动归集；一台宿主机可能被多个项目共享。</div></div>'
+      +'<div class="pm-panel"><div class="pm-panel-h"><h3>CPU 架构分布</h3><span class="hint">'+(meta.target_arch?esc(meta.target_arch)+' 默认':'待确认')+'</span></div>'+archHtml+'</div>'
+      +'<div class="pm-panel"><div class="pm-panel-h"><h3>机器类型分布</h3></div>'+typeHtml+'</div>'
+      +'<div class="pm-panel"><div class="pm-panel-h"><h3>资源负责人分布</h3></div>'+pmOwnerChips(p.owner_counts||{})+'</div>'
+    +'</div>'+metaModal+'</div>';
+  bindPmEvents(m,p);
+}
+function metaVal(x,k){return ((x.meta||{})[k]||'')}
+function refreshProjectCockpit(){
+  load().then(function(){
+    if(typeof DEAD!=='undefined'&&DEAD)return;
+    render();toast('项目汇总已刷新','ok');
+  }).catch(function(e){toast(e.message,'err')});
+}
+function saveProjectMeta(p){
+  var body={dev_owner:val('pm_dev'),ops_owner:val('pm_ops'),business_owner:val('pm_biz'),
+            target_arch:val('pm_arch'),environment:val('pm_env'),description:val('pm_desc')};
+  req(API+'/project-meta/'+encodeURIComponent(p.name),{method:'PUT',body:body}).then(function(){return load()}).then(function(){
+    if(typeof DEAD!=='undefined'&&DEAD)return;
+    render();toast('项目档案已保存','ok');
+  }).catch(function(e){toast(e.message,'err')});
+}
+function saveProjectArch(el){
+  var id=+el.dataset.pmArch,v=el.value;
+  req(API+'/resources/'+id,{method:'PUT',body:{architecture:v}}).then(function(){return load()}).then(function(){
+    if(typeof DEAD!=='undefined'&&DEAD)return;
+    render();toast(v?('架构已设为 '+v):'架构已清除','ok');
+  }).catch(function(e){toast(e.message,'err')});
+}
+function bindPmEvents(m,p){
+  m.querySelectorAll('[data-pm-project]').forEach(function(el){el.onclick=function(){PROJECT_SELECTED=el.dataset.pmProject;PROJECT_RES_TAB='all';renderBody()}});
+  m.querySelectorAll('[data-pm-tab]').forEach(function(el){el.onclick=function(){PROJECT_RES_TAB=el.dataset.pmTab;renderBody()}});
+  m.querySelectorAll('[data-pm-arch]').forEach(function(el){el.onchange=function(){saveProjectArch(el)}});
+  var ed=m.querySelector('[data-pm-edit]');if(ed)ed.onclick=function(){var mo=document.getElementById('pmModal');if(mo)mo.classList.add('show')};
+  var vw=m.querySelector('[data-pm-view]');if(vw)vw.onclick=function(){_projFilter=p.name;_ownerFilter='';_statusFilter='';_phyFilter='';_q='';go('resources')};
+  var rf=m.querySelector('[data-pm-refresh-inline]');if(rf)rf.onclick=refreshProjectCockpit;
+  var ca=m.querySelector('[data-pm-cancel]');if(ca)ca.onclick=function(){var mo=document.getElementById('pmModal');if(mo)mo.classList.remove('show')};
+  var sv=m.querySelector('[data-pm-save]');if(sv)sv.onclick=function(){saveProjectMeta(p)};
+  var mo=document.getElementById('pmModal');if(mo)mo.onclick=function(e){if(e.target===mo)mo.classList.remove('show')};
+}
+
 /* ============ 项目 / 负责人 ============ */
 function renderTags(m,k){
   var cfg={
@@ -1186,6 +1490,7 @@ function openEditRes(id){
   var parentIp = (rr.vm_ip && rr.pve_ip && rr.pve_ip !== rr.vm_ip) ? rr.pve_ip : '';
   setField('em_name',rr.name);setField('em_vm',ownIp);fillPhySelect(parentIp);setField('em_domain',rr.domain);
   setField('em_type',rr.machine_type);
+  setField('em_arch',rr.architecture||'');
   setField('em_account',rr.account);setField('em_password',rr.password);
   setField('em_status',rr.status||'online');
   setField('em_remark',rr.remark||'');
@@ -1198,7 +1503,7 @@ function openEditRes(id){
 function openCreateRes(){
   _editId=null;
   document.getElementById('rcModalHead').textContent='新增资源';
-  ['em_name','em_vm','em_domain','em_type','em_account','em_password','em_remark'].forEach(function(id){setField(id,'')});
+  ['em_name','em_vm','em_domain','em_type','em_arch','em_account','em_password','em_remark'].forEach(function(id){setField(id,'')});
   setField('em_status','online');
   document.getElementById('em_owner').dataset.cur='';
   document.getElementById('em_proj').dataset.cur='';
@@ -1485,6 +1790,8 @@ function openConfirmRes(rec){
 
 document.addEventListener('click',function(e){
   var t=e.target;
+  // PROJECT-COCKPIT-20261112：工具栏「刷新汇总」
+  var pr=t.closest('[data-pm-refresh]');if(pr){refreshProjectCockpit();return}
   // 详情抽屉/删除确认弹窗的关闭（data-close）—— 全局兜底：
   // 即使 openResDrawer/openConfirmRes 里动态绑定 onclick 因中途异常而丢失，点遮罩/关闭钮/Esc 仍能关。
   var dcs=t.closest('[data-close]');if(dcs){closeResLayer();return}
@@ -1642,7 +1949,7 @@ document.addEventListener('click',function(e){
       pve_ip:parentIp||ownIp, vm_ip:parentIp?ownIp:'',
       domain:val('em_domain'),
       owner:owName, projects:pjName?[pjName]:[],
-      machine_type:val('em_type'),account:val('em_account'),password:val('em_password'),
+      machine_type:val('em_type'),architecture:val('em_arch'),account:val('em_account'),password:val('em_password'),
       status:val('em_status')||'online',
       remark:val('em_remark')
     };

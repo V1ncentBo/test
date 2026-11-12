@@ -23,6 +23,7 @@ class ResourceItem(Base):
     owner = Column(String(128), default="", comment="负责人")
     projects = Column(JSON, default=list, comment="关联项目列表")
     machine_type = Column(String(64), default="", comment="机器类型")
+    architecture = Column(String(24), default="", comment="CPU架构 x86_64 / aarch64 / other")
     category = Column(String(16), default="vm", comment="资源分类 physical=物理机 / vm=虚拟机")
     location = Column(String(255), default="", comment="机房/机柜")
     office_area = Column(String(64), default="", comment="办公区，如 南办公区/北办公区")

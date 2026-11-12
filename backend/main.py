@@ -768,6 +768,8 @@ app.add_middleware(SlowAPIMiddleware)
 # 注册路由
 app.include_router(machines.router)
 app.include_router(metrics.router)
+# 监控大屏：免登录只读聚合接口（字段由 public_screen 显式脱敏）
+app.include_router(metrics.public_router)
 app.include_router(alerts.router)
 app.include_router(ai.router)
 app.include_router(auth.router)

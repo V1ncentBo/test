@@ -1194,3 +1194,21 @@ html[data-mc-dg-ok] .main-area .deploy-guide > section.guide-section{display:non
 @media (prefers-reduced-motion: reduce) {
   .main-area .stat::before { animation: none !important; opacity: 0 !important; }
 }
+
+/* ══ MC-SCREEN-ENTRY 2026-11-11 监控总览 · 全局态势大屏入口 ══ */
+.main-area .dashboard .dash-header { position: relative; }
+.mc-screen-entry {
+  display: inline-flex; align-items: center; gap: 7px;
+  height: 32px; padding: 0 13px; margin-left: auto;
+  border: 1px solid var(--mc-border-strong, rgba(16,24,40,.14));
+  border-radius: 8px; background: var(--mc-bg, #fff);
+  color: var(--mc-text-2, #475569); font-size: 12px; font-weight: 500;
+  cursor: pointer; transition: color .18s, border-color .18s, box-shadow .18s;
+}
+.mc-screen-entry svg { width: 15px; height: 15px; }
+.mc-screen-entry:hover {
+  color: var(--mc-bar-1, #1B3F7A);
+  border-color: color-mix(in srgb, var(--mc-bar-1, #1B3F7A) 45%, transparent);
+  box-shadow: 0 4px 14px rgba(16,24,40,.08);
+}
+[data-theme="dark"] .mc-screen-entry:hover { box-shadow: 0 4px 14px rgba(0,0,0,.45); }
